@@ -276,10 +276,11 @@ thread_create (const char *name, int priority,
 
 	/* Add to run queue. */
 	thread_unblock (t);
-	if(t->priority > thread_current()->priority) 
-	{
-		thread_yield();
-	}
+	// if(t->priority > thread_current()->priority) 
+	// {
+	// 	thread_yield();
+	// }
+	thread_test_preemption();
 	return tid;
 }
 
@@ -439,14 +440,15 @@ void
 thread_set_priority (int new_priority) {
 	if (thread_mlfqs)
     return;
-	struct thread *first_thread = NULL;
-	if(!list_empty(&ready_list)) 
-		first_thread = list_entry(list_begin(&ready_list), struct thread, elem);
+	// struct thread *first_thread = NULL;
+	// if(!list_empty(&ready_list)) 
+	// 	first_thread = list_entry(list_begin(&ready_list), struct thread, elem);
 	thread_current ()->init_priority = new_priority;
 	refresh_priority ();
-	if(first_thread != NULL && 
-			first_thread->priority > new_priority)
-		thread_yield();
+	// if(first_thread != NULL && 
+	// 		first_thread->priority > new_priority)
+	// 	thread_yield();
+	thread_test_preemption();
 }
 
 /* Returns the current thread's priority. */
@@ -455,13 +457,22 @@ thread_get_priority (void) {
 	return thread_current ()->priority;
 }
 
+void 
+thread_test_preemption (void)
+{
+    if (!list_empty (&ready_list) && 
+    thread_current ()->priority < 
+    list_entry (list_front (&ready_list), struct thread, elem)->priority)
+        thread_yield ();
+}
+
 /* Sets the current thread's nice value to NICE. */
 void
 thread_set_nice (int nice UNUSED) {
 	enum intr_level old_level = intr_disable ();
 	thread_current ()->nice = nice;
 	mlfqs_calculate_priority (thread_current ());
-	// thread_test_preemption ();
+	thread_test_preemption ();
 	intr_set_level (old_level);
 }
 

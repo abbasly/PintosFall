@@ -163,7 +163,7 @@ bool thread_wakeup_tick_compare(const struct list_elem *elem1, const struct list
 
 void thread_sleep(int64_t tick);
 void thread_wakeup(int64_t tick);
-
+void thread_test_preemption (void);
 // MLFQ functions
 void mlfqs_calculate_priority (struct thread *t);
 void mlfqs_calculate_recent_cpu (struct thread *t);
