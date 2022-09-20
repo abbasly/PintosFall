@@ -66,11 +66,10 @@ sema_down (struct semaphore *sema) {
 
 	old_level = intr_disable ();
 	while (sema->value == 0) {
-		struct thread* current_thread = thread_current();
-		list_insert_ordered(&sema->waiters, &current_thread->elem, thread_prio_compare, NULL);
+		list_insert_ordered(&sema->waiters, &(thread_current()->elem), thread_prio_compare, NULL);
 		thread_block ();
 	}
-	sema->value--;
+	sema->value = sema->value - 1;
 	intr_set_level (old_level);
 }
 
@@ -105,21 +104,19 @@ sema_try_down (struct semaphore *sema) {
    This function may be called from an interrupt handler. */
 void
 sema_up (struct semaphore *sema) {
-	struct thread* t = NULL;
 	enum intr_level old_level;
 
 	ASSERT (sema != NULL);
 
 	old_level = intr_disable ();
-	if (!list_empty (&sema->waiters)){
-		list_sort(&sema->waiters, thread_prio_compare, NULL); // sort the list wrt priority
-		// t = list_entry(list_front(&sema->waiters), struct thread, elem);
-		thread_unblock (list_entry (list_pop_front (&sema->waiters),
-					struct thread, elem));}
-	sema->value++;
+	if (list_empty (&sema->waiters)){}
+	else{
+		list_sort(&sema->waiters, thread_prio_compare, NULL);
+		struct thread *to_be_unblocked = list_entry (list_pop_front (&sema->waiters),
+					struct thread, elem);
+		thread_unblock (to_be_unblocked);}
+	sema->value = sema->value+1;
 	intr_set_level (old_level);
-	// if(t != NULL && t->priority > thread_current()->priority)
-	// 	thread_yield();
 	thread_test_preemption();
 }
 
