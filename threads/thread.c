@@ -44,7 +44,7 @@ static struct lock tid_lock;
 static struct list destruction_req;
 
 // Blocked list
-static struct list blocked_list;
+static struct list sleep_list;
 
 /* Statistics. */
 static long long idle_ticks;    /* # of timer ticks spent idle. */
@@ -114,11 +114,12 @@ thread_init (void) {
 	lgdt (&gdt_ds);
 
 	/* Init the globla thread context */
+	list_init (&sleep_list);
 	lock_init (&tid_lock);
 	list_init (&ready_list);
 	list_init (&all_threads);
 	list_init (&destruction_req);
-	list_init (&blocked_list);
+	
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();
@@ -326,45 +327,45 @@ thread_unblock (struct thread *t) {
 	intr_set_level (old_level);
 }
 
-void
-thread_sleep(int64_t tick) 
+// Helper function to compare the ticks
+bool 
+thread_compare_wake_up_tick(const struct list_elem *elem1,
+													 const struct list_elem *elem2, void *aux UNUSED)
 {
-	struct thread *curr = thread_current();
-	/* Idle Thread is not to be slept */
-	ASSERT(curr != idle_thread);
+	return list_entry(elem2, struct thread, elem)->wakeup > list_entry(elem1, struct thread, elem)->wakeup;
+}
 
+void
+thread_put_to_sleep(int64_t ticks) 
+{
+	// struct thread *curr = thread_current();
+	ASSERT(thread_current() != idle_thread);
 	enum intr_level old_level;
 
 	old_level = intr_disable();
-	curr->wakeup_tick = tick;
-	list_insert_ordered(&blocked_list, &curr->elem, thread_wakeup_tick_compare, NULL);
+	thread_current()->wakeup = ticks;
+	list_insert_ordered(&sleep_list, &(thread_current()->elem), thread_compare_wake_up_tick, 0);
 	thread_block();
 	intr_set_level(old_level);
 }
 
 void
-thread_wakeup(int64_t curr_ticks) 
+thread_wakeup(int64_t ticks) 
 {
-	struct list_elem *it = list_begin(&blocked_list);
-	while(it != list_end(&blocked_list))
+	struct list_elem *it = list_begin(&sleep_list);
+	while(it != list_end(&sleep_list))
 	{
 		struct thread *curr_thread = list_entry(it, struct thread, elem);
-		int64_t wakeup_tick = curr_thread->wakeup_tick;
-		if(curr_ticks < wakeup_tick) break;
-		it = list_remove(it);
+		if(curr_thread->wakeup > ticks) break;
+		// remove thread from the list
+		it->prev->next = it->next;
+		it->next->prev = it->prev;
+		it = it->next;
 		thread_unblock(curr_thread);
 	}
 }
 
-// Helper function to compare the ticks
-bool 
-thread_wakeup_tick_compare(const struct list_elem *elem1,
-													 const struct list_elem *elem2, void *aux UNUSED)
-{
-	const int64_t tick1 = list_entry(elem1, struct thread, elem)->wakeup_tick;
-	const int64_t tick2 = list_entry(elem2, struct thread, elem)->wakeup_tick;
-	return tick1 < tick2;
-}
+
 
 /* Returns the name of the running thread. */
 const char *
