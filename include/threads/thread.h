@@ -166,7 +166,6 @@ void thread_wakeup(int64_t ticks);
 void thread_check_preemption (void);
 // MLFQ functions
 void mlfqs_calculate_priority (struct thread *t);
-void mlfqs_calculate_recent_cpu (struct thread *t);
 void mlfqs_calculate_load_avg (void);
 
 #endif /* threads/thread.h */

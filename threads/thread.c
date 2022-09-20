@@ -131,38 +131,31 @@ thread_init (void) {
 void
 mlfqs_calculate_priority (struct thread *t)
 {
-  if (t == idle_thread) 
-    return ;
-  t->priority = fp_to_int (add_mixed (div_mixed (t->recent_cpu, -4), PRI_MAX - t->nice * 2));
-}
-
-void
-mlfqs_calculate_recent_cpu (struct thread *t)
-{
-  if (t == idle_thread)
-    return ;
-  t->recent_cpu = add_mixed (mult_fp (div_fp (mult_mixed (load_avg, 2), add_mixed (mult_mixed (load_avg, 2), 1)), t->recent_cpu), t->nice);
+  if(t!= idle_thread){
+  t->priority = fp_to_int (add_mixed (div_mixed (t->recent_cpu, -4), PRI_MAX - t->nice * 2));}
+  else {return;}
 }
 
 void 
 mlfqs_calculate_load_avg (void) 
 {
-  int ready_threads;
+  int num_ready;
   
   if (thread_current () == idle_thread)
-    ready_threads = list_size (&ready_list);
+    num_ready = list_size (&ready_list);
   else
-    ready_threads = list_size (&ready_list) + 1;
+    num_ready = list_size (&ready_list) + 1;
 
   load_avg = add_fp (mult_fp (div_fp (int_to_fp (59), int_to_fp (60)), load_avg), 
-                     mult_mixed (div_fp (int_to_fp (1), int_to_fp (60)), ready_threads));
+                     mult_mixed (div_fp (int_to_fp (1), int_to_fp (60)), num_ready));
 }
 
 void
 mlfqs_increment_recent_cpu (void)
 {
-  if (thread_current () != idle_thread)
-    thread_current ()->recent_cpu = add_mixed (thread_current ()->recent_cpu, 1);
+  if(thread_current() == idle_thread){}
+  else{
+    thread_current ()->recent_cpu = add_mixed (thread_current ()->recent_cpu, 1);}
 }
 
 void
@@ -172,20 +165,12 @@ mlfqs_recalculate_recent_cpu (void)
 
   for (e = list_begin (&all_threads); e != list_end (&all_threads); e = list_next (e)) {
     struct thread *t = list_entry (e, struct thread, all_elem);
-    mlfqs_calculate_recent_cpu (t);
+    if (t != idle_thread){
+    t->recent_cpu = add_mixed (mult_fp (div_fp (mult_mixed (load_avg, 2), add_mixed (mult_mixed (load_avg, 2), 1)), t->recent_cpu), t->nice);}
+	else {return;}
   }
 }
 
-void
-mlfqs_recalculate_priority (void)
-{
-  struct list_elem *e;
-
-  for (e = list_begin (&all_threads); e != list_end (&all_threads); e = list_next (e)) {
-    struct thread *t = list_entry (e, struct thread, all_elem);
-    mlfqs_calculate_priority (t);
-  }
-}
 
 /* Starts preemptive thread scheduling by enabling interrupts.
    Also creates the idle thread. */
@@ -429,7 +414,7 @@ thread_yield (void) {
 void
 thread_set_priority (int new_priority) {
 	if (thread_mlfqs)
-    return;
+    	return;
 	thread_current ()->initial_priority = new_priority;
 	struct thread *cur = thread_current ();
 
@@ -486,18 +471,18 @@ thread_get_nice (void) {
 int
 thread_get_load_avg (void) {
 	enum intr_level old_level = intr_disable ();
-  	int load_avg_value = fp_to_int_round (mult_mixed (load_avg, 100));
+  	int load_avgg = fp_to_int_round (mult_mixed (load_avg, 100));
   	intr_set_level (old_level);
-  	return load_avg_value;
+  	return load_avgg;
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) {
 	enum intr_level old_level = intr_disable ();
-	int recent_cpu= fp_to_int_round (mult_mixed (thread_current ()->recent_cpu, 100));
+	int rec_cpu= fp_to_int_round (mult_mixed (thread_current ()->recent_cpu, 100));
   	intr_set_level (old_level);
-  	return recent_cpu;
+  	return rec_cpu;
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -562,7 +547,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
-
+	list_push_back(&all_threads, &(t->all_elem));
 	t->initial_priority = priority;
 	list_init(&t->donations);
 	t->waiting_lock = NULL;
