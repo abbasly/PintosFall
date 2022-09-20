@@ -288,11 +288,7 @@ bool
 thread_prio_compare(const struct list_elem *elem1,
 		const struct list_elem *elem2, void *aux UNUSED)
 {
-	const int prio1 = list_entry(elem1, struct thread, elem)->priority;
-	const int prio2 = list_entry(elem2, struct thread, elem)->priority;
-	/* Since scheduler pull out the front one, newly inserted one
-	 * should be back of the same priority ones for round-robin*/
-	return prio1 > prio2;
+	return list_entry(elem2, struct thread, elem)->priority < list_entry(elem1, struct thread, elem)->priority;
 }
 
 /* Puts the current thread to sleep.  It will not be scheduled
@@ -325,7 +321,6 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	// list_push_back (&ready_list, &t->elem);
 	list_insert_ordered(&ready_list, &t->elem, thread_prio_compare, NULL);
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
@@ -429,7 +424,6 @@ thread_yield (void) {
 
 	old_level = intr_disable ();
 	if (curr != idle_thread)
-		// list_push_back (&ready_list, &curr->elem);
 		list_insert_ordered(&ready_list, &curr->elem, thread_prio_compare, NULL);
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);

@@ -157,7 +157,7 @@ int thread_get_load_avg (void);
 void do_iret (struct intr_frame *tf);
 
 // compare priority
-bool thread_prio_compare(const struct list_elem *a, const struct list_elem *b, void *aux);
+bool thread_prio_compare(const struct list_elem *elem1, const struct list_elem *elem2, void *aux);
 // compare wake up tick
 bool thread_wakeup_tick_compare(const struct list_elem *elem1, const struct list_elem *elem2, void *aux UNUSED);
 
