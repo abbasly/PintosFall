@@ -98,7 +98,7 @@ struct thread {
 
 	/* For priority donation*/
 
-	int init_priority;
+	int initial_priority;
 	struct lock *waiting_lock;
 	struct list donations;
 	struct list_elem donation_elem;
@@ -163,7 +163,7 @@ bool thread_compare_wake_up_tick(const struct list_elem *elem1, const struct lis
 
 void thread_put_to_sleep(int64_t ticks);
 void thread_wakeup(int64_t ticks);
-void thread_test_preemption (void);
+void thread_check_preemption (void);
 // MLFQ functions
 void mlfqs_calculate_priority (struct thread *t);
 void mlfqs_calculate_recent_cpu (struct thread *t);

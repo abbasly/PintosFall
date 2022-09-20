@@ -275,13 +275,8 @@ thread_create (const char *name, int priority,
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
 
-	/* Add to run queue. */
 	thread_unblock (t);
-	// if(t->priority > thread_current()->priority) 
-	// {
-	// 	thread_yield();
-	// }
-	thread_test_preemption();
+	thread_check_preemption();
 	return tid;
 }
 
@@ -435,15 +430,20 @@ void
 thread_set_priority (int new_priority) {
 	if (thread_mlfqs)
     return;
-	// struct thread *first_thread = NULL;
-	// if(!list_empty(&ready_list)) 
-	// 	first_thread = list_entry(list_begin(&ready_list), struct thread, elem);
-	thread_current ()->init_priority = new_priority;
-	refresh_priority ();
-	// if(first_thread != NULL && 
-	// 		first_thread->priority > new_priority)
-	// 	thread_yield();
-	thread_test_preemption();
+	thread_current ()->initial_priority = new_priority;
+	struct thread *cur = thread_current ();
+
+  	cur->priority = cur->initial_priority;
+  
+	if(list_empty (&cur->donations)){}
+  	else{
+    	list_sort (&cur->donations, thread_compare_donation_prio, 0);
+
+    	struct thread *front = list_entry (list_front (&cur->donations), struct thread, donation_elem);
+    	if (front->priority > cur->priority)
+      	cur->priority = front->priority;
+  };
+	thread_check_preemption();
 }
 
 /* Returns the current thread's priority. */
@@ -453,12 +453,14 @@ thread_get_priority (void) {
 }
 
 void 
-thread_test_preemption (void)
+thread_check_preemption (void)
 {
-    if (!list_empty (&ready_list) && 
-    thread_current ()->priority < 
-    list_entry (list_front (&ready_list), struct thread, elem)->priority)
-        thread_yield ();
+	struct thread *current_thread = thread_current();
+	if(!list_empty (&ready_list)){
+		if(list_entry (list_front (&ready_list), struct thread, elem)->priority > current_thread->priority ){
+			thread_yield();
+		}
+	} else{}
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -467,7 +469,7 @@ thread_set_nice (int nice UNUSED) {
 	enum intr_level old_level = intr_disable ();
 	thread_current ()->nice = nice;
 	mlfqs_calculate_priority (thread_current ());
-	thread_test_preemption ();
+	thread_check_preemption ();
 	intr_set_level (old_level);
 }
 
@@ -561,7 +563,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
 
-	t->init_priority = priority;
+	t->initial_priority = priority;
 	list_init(&t->donations);
 	t->waiting_lock = NULL;
 

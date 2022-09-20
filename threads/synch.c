@@ -117,7 +117,7 @@ sema_up (struct semaphore *sema) {
 		thread_unblock (to_be_unblocked);}
 	sema->value = sema->value+1;
 	intr_set_level (old_level);
-	thread_test_preemption();
+	thread_check_preemption();
 }
 
 static void sema_test_helper (void *sema_);
@@ -199,11 +199,12 @@ lock_acquire (struct lock *lock) {
   }
 
 	struct thread *current_thread = thread_current();
-	if(lock->holder){
+	if(!lock->holder){}
+	else{
 		struct thread *holder = lock->holder;
 		current_thread->waiting_lock = lock;
-		list_insert_ordered(&holder->donations, &current_thread->donation_elem, thread_compare_donate_priority, 0);
-		donate_priority();
+		list_insert_ordered(&holder->donations, &current_thread->donation_elem, thread_compare_donation_prio, 0);
+		donate_prio();
 
 	}
 
@@ -212,50 +213,25 @@ lock_acquire (struct lock *lock) {
 	current_thread->waiting_lock = NULL;
 }
 
-void
-remove_with_lock (struct lock *lock)
-{
-  struct list_elem *e;
-  struct thread *cur = thread_current ();
-
-  for (e = list_begin (&cur->donations); e != list_end (&cur->donations); e = list_next (e)){
-    struct thread *t = list_entry (e, struct thread, donation_elem);
-    if (t->waiting_lock == lock)
-      list_remove (&t->donation_elem);
-  }
-}
-
-void
-refresh_priority (void)
-{
-  struct thread *cur = thread_current ();
-
-  cur->priority = cur->init_priority;
-  
-  if (!list_empty (&cur->donations)) {
-    list_sort (&cur->donations, thread_compare_donate_priority, 0);
-
-    struct thread *front = list_entry (list_front (&cur->donations), struct thread, donation_elem);
-    if (front->priority > cur->priority)
-      cur->priority = front->priority;
-  }
-}
-
-void donate_priority(){
+void donate_prio(){
+	int depth = 9;
 	struct thread *current_thread = thread_current();
-	for (int depth = 0; depth < 8; depth++){
-    if (!current_thread->waiting_lock) break;
+	while(depth>0){
+	
+    if (current_thread->waiting_lock){
       struct thread *holder = current_thread->waiting_lock->holder;
       holder->priority = current_thread->priority;
       current_thread = holder;
+	  depth--;} else break;
   }
 }
 
-bool thread_compare_donate_priority (const struct list_elem *l, 
-				const struct list_elem *s, void *aux)
+bool thread_compare_donation_prio (const struct list_elem *elem1, 
+				const struct list_elem *elem2, void *aux)
 {
-	return list_entry (l, struct thread, donation_elem)->priority
-		 > list_entry (s, struct thread, donation_elem)->priority;
+	int prio1 = list_entry (elem1, struct thread, donation_elem)->priority;
+	int prio2 = list_entry (elem2, struct thread, donation_elem)->priority;
+	return prio1 > prio2;
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -293,8 +269,25 @@ lock_release (struct lock *lock) {
     sema_up (&lock->semaphore);
     return ;
   }
-	remove_with_lock (lock);
-	refresh_priority ();
+	struct list_elem *e;
+  	struct thread *cur = thread_current ();
+
+  	for (e = list_begin (&cur->donations); e != list_end (&cur->donations); e = list_next (e)){
+    	struct thread *t = list_entry (e, struct thread, donation_elem);
+		if (t->waiting_lock !=lock){}
+    	else{
+      	list_remove (&t->donation_elem);}
+  	}
+  	cur->priority = cur->initial_priority;
+  
+	if(list_empty(&cur->donations)){}
+  	else {
+    	list_sort (&cur->donations, thread_compare_donation_prio, 0);
+
+   		struct thread *front = list_entry (list_front (&cur->donations), struct thread, donation_elem);
+    	if (front->priority > cur->priority)
+      	cur->priority = front->priority;
+  };
 	sema_up (&lock->semaphore);
 }
 
