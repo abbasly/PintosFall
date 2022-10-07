@@ -261,7 +261,7 @@ thread_create (const char *name, int priority,
 	t->tf.eflags = FLAG_IF;
 
 	thread_unblock (t);
-	thread_check_preemption();
+	// thread_check_preemption();
 	return tid;
 }
 
@@ -428,7 +428,7 @@ thread_set_priority (int new_priority) {
     	if (front->priority > cur->priority)
       	cur->priority = front->priority;
   };
-	thread_check_preemption();
+	// thread_check_preemption();
 }
 
 /* Returns the current thread's priority. */

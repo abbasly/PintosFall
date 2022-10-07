@@ -63,7 +63,10 @@ initd (void *f_name) {
 #ifdef VM
 	supplemental_page_table_init (&thread_current ()->spt);
 #endif
-
+	// printf('sdfsfsfsdfs\n');
+	// printf('sdfsfsfsdfs\n');
+	// printf('sdfsfsfsdfs\n');
+	// printf('sdfsfsfsdfs\n');
 	process_init ();
 
 	if (process_exec (f_name) < 0)
@@ -158,13 +161,50 @@ error:
 	thread_exit ();
 }
 
+void argument_stack(char **argv, int argc, void **rsp)
+{
+    // Save argument strings (character by character)
+    for (int i = argc - 1; i >= 0; i--)
+    {
+        int argv_len = strlen(argv[i]);
+        for (int j = argv_len; j >= 0; j--)
+        {
+            char argv_char = argv[i][j];
+            (*rsp)--;
+            **(char **)rsp = argv_char; // 1 byte
+        }
+        argv[i] = *(char **)rsp; // 배열에 rsp 주소 넣기
+    }
+
+    // Word-align padding
+    int pad = (int)*rsp % 8;
+    for (int k = 0; k < pad; k++)
+    {
+        (*rsp)--;
+        **(uint8_t **)rsp = 0;
+    }
+
+    // Pointers to the argument strings
+    (*rsp) -= 8;
+    **(char ***)rsp = 0;
+
+    for (int i = argc - 1; i >= 0; i--)
+    {
+        (*rsp) -= 8;
+        **(char ***)rsp = argv[i];
+    }
+
+    // Return address
+    (*rsp) -= 8;
+    **(void ***)rsp = 0;
+}
+
 /* Switch the current execution context to the f_name.
  * Returns -1 on fail. */
 int
 process_exec (void *f_name) {
 	char *file_name = f_name;
 	bool success;
-
 	/* We cannot use the intr_frame in the thread structure.
 	 * This is because when current thread rescheduled,
 	 * it stores the execution information to the member. */
@@ -176,6 +216,19 @@ process_exec (void *f_name) {
 	/* We first kill the current context */
 	process_cleanup ();
 
+	char *argv[64];
+	int argc = 0;
+
+	// parsing the arguments
+	char *token;
+	char *save_ptr;
+	token = strtok_r(file_name, " ", &save_ptr);
+	while( token != NULL){
+		argv[argc] = token;
+		token = strtok_r(NULL, " ", &save_ptr);
+		argc++;
+	}
+
 	/* And then load the binary */
 	success = load (file_name, &_if);
 
@@ -183,6 +236,14 @@ process_exec (void *f_name) {
 	palloc_free_page (file_name);
 	if (!success)
 		return -1;
+
+	// putting the arguments on the stack
+	void **rspp = &_if.rsp;
+	argument_stack(argv, argc, rspp);
+	_if.R.rdi = argc;
+    _if.R.rsi = (uint64_t)*rspp + sizeof(void *);
+	hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)*rspp, true);
+    palloc_free_page(file_name);
 
 	/* Start switched process. */
 	do_iret (&_if);
@@ -204,6 +265,7 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+	while(0){};
 	return -1;
 }
 
