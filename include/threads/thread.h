@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "threads/synch.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -27,6 +28,11 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
+
+/* --- project 2: system call --- */
+
+#define FDT_PAGES 3
+#define FDCOUNT_LIMIT FDT_PAGES *(1<<9) // limit fdidx
 
 /* A kernel thread or user process.
  *
@@ -89,7 +95,6 @@ struct thread {
 	/* Owned by thread.c. */
 	tid_t tid;                          /* Thread identifier. */
 	enum thread_status status;          /* Thread state. */
-	int exit_status;
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
 	int64_t wakeup;                // wake up tick for the thread
@@ -121,6 +126,25 @@ struct thread {
 	/* Owned by thread.c. */
 	struct intr_frame tf;               /* Information for switching */
 	unsigned magic;                     /* Detects stack overflow. */
+
+	struct file **file_descriptor_table; // FDF
+	int fdidx; // fd idx
+
+	struct list child_list;			// _fork(), wait() 구현 때 사용
+	struct list_elem child_elem; 	// _fork(), wait() 구현 때 사용
+	
+	int exit_status; // exit(), wait() 구현 때 사용
+
+
+	struct intr_frame parent_if;	// _fork() 구현 때 사용, __do_fork() 함수
+	struct semaphore fork_sema;
+	struct semaphore free_sema;
+	struct semaphore wait_sema;
+
+	struct file *running;
+
+	int stdin_count;
+	int stdout_count;
 };
 
 /* If false (default), use round-robin scheduler.

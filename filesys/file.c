@@ -3,23 +3,24 @@
 #include "filesys/inode.h"
 #include "threads/malloc.h"
 
-/* An open file. */
-struct file {
-	struct inode *inode;        /* File's inode. */
-	off_t pos;                  /* Current position. */
-	bool deny_write;            /* Has file_deny_write() been called? */
-};
+// /* An open file. */
+// struct file {
+// 	struct inode *inode;        /* File's inode. */
+// 	off_t pos;                  /* Current position. */
+// 	bool deny_write;            /* Has file_deny_write() been called? */
+// };
 
 /* Opens a file for the given INODE, of which it takes ownership,
  * and returns the new file.  Returns a null pointer if an
  * allocation fails or if INODE is null. */
 struct file *
 file_open (struct inode *inode) {
-	struct file *file = calloc (1, sizeof *file);
+	struct file *file = calloc (1, sizeof *file); // file 저장을 위한 동적 할당
 	if (inode != NULL && file != NULL) {
-		file->inode = inode;
-		file->pos = 0;
+		file->inode = inode; // 파일의 이름을 저장
+		file->pos = 0;		 // 현재 파일이 어디까지 쓰였는지? -> 커서 역할을 함. 현재는 0으로 초기화
 		file->deny_write = false;
+		file->dup_count = 0; // project2 - extra
 		return file;
 	} else {
 		inode_close (inode);
@@ -44,6 +45,7 @@ file_duplicate (struct file *file) {
 		nfile->pos = file->pos;
 		if (file->deny_write)
 			file_deny_write (nfile);
+		nfile->dup_count = file->dup_count;
 	}
 	return nfile;
 }
@@ -93,6 +95,13 @@ file_read_at (struct file *file, void *buffer, off_t size, off_t file_ofs) {
  * (Normally we'd grow the file in that case, but file growth is
  * not yet implemented.)
  * Advances FILE's position by the number of bytes read. */
+/* 버퍼의 크기 바이트를 파일에 씁니다.
+* 파일의 현재 위치에서 시작합니다.
+* 실제로 쓴 바이트 수를 반환합니다.
+* 파일의 끝에 도달하면 크기보다 작을 수 있습니다.
+* (보통 이 경우 파일을 확장하지만 파일 증가율은
+* 아직 구현되지 않았습니다.)
+* 읽은 바이트 수만큼 파일 위치를 이동합니다. */
 off_t
 file_write (struct file *file, const void *buffer, off_t size) {
 	off_t bytes_written = inode_write_at (file->inode, buffer, size, file->pos);
@@ -137,6 +146,7 @@ file_allow_write (struct file *file) {
 }
 
 /* Returns the size of FILE in bytes. */
+/* 파일 구조체 포인터를 인자로 받아 파일의 메타데이터 inode 안에 있는 length를 반환*/
 off_t
 file_length (struct file *file) {
 	ASSERT (file != NULL);
