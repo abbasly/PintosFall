@@ -7,6 +7,7 @@
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
+#include "threads/init.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -24,6 +25,42 @@ void syscall_handler (struct intr_frame *);
 #define MSR_LSTAR 0xc0000082        /* Long mode SYSCALL target */
 #define MSR_SYSCALL_MASK 0xc0000084 /* Mask for the eflags */
 
+
+void check_address(const uint64_t *uaddr)
+{
+      struct thread *curr = thread_current ();
+      if (uaddr == NULL || !(is_user_vaddr(uaddr)) || pml4_get_page(curr->pml4, uaddr) == NULL) {
+        exit(-1);		
+      }
+}
+
+void halt (void)
+{
+    power_off(); //
+}
+
+void exit(int status)
+{
+    
+    struct thread *curr = thread_current ();
+    curr -> exit_status = status;
+
+    printf("%s: exit(%d)\n", thread_name (), status);
+    thread_exit ();
+}
+
+bool create(const char *file, unsigned initial_size)
+{
+    check_address (file);
+    return filesys_create(file, initial_size);
+}
+
+bool remove(const char *file)
+{
+    check_address (file);
+    return filesys_remove (file);
+}
+
 void
 syscall_init (void) {
 	write_msr(MSR_STAR, ((uint64_t)SEL_UCSEG - 0x10) << 48  |
@@ -40,7 +77,22 @@ syscall_init (void) {
 /* The main system call interface */
 void
 syscall_handler (struct intr_frame *f UNUSED) {
-	// TODO: Your implementation goes here.
-	printf ("system call!\n");
-	thread_exit ();
+	switch (f->R.rax)
+	{
+	case SYS_HALT:
+		halt();
+		break;
+	case SYS_EXIT:
+		exit(f->R.rdi);
+		break;
+	case SYS_CREATE:
+		f->R.rax = create(f->R.rdi, f->R.rsi);
+		break;
+	case SYS_REMOVE:
+		f->R.rax = remove(f->R.rdi);
+		break;
+	default:
+		exit(-1);
+		break;
+	}
 }
