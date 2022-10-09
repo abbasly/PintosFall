@@ -268,41 +268,50 @@ error:
     exit(TID_ERROR);
 }
 
-void argument_stack(char **argv, int argc, void **rsp)
+void decrement_rspn(void **rsp, int n){
+	(*rsp) = (*rsp) - n;
+}
+
+void decrement_rsp(void **rsp){
+	decrement_rspn(rsp, 1);
+}
+
+
+// Function to set pointers for argument stack
+void set_arg_stack(char **argv, int argc, void **rsp)
 {
-    // Save argument strings (character by character)
+    // Write arg str's to argv
     for (int i = argc - 1; i >= 0; i--)
     {
         int argv_len = strlen(argv[i]);
         for (int j = argv_len; j >= 0; j--)
         {
-            char argv_char = argv[i][j];
-            (*rsp)--;
-            **(char **)rsp = argv_char; // 1 byte
+			decrement_rsp(rsp);
+            **(char **)rsp = argv[i][j];
         }
-        argv[i] = *(char **)rsp; // 배열에 rsp 주소 넣기
+        argv[i] = *(char **)rsp;
     }
 
-    // Word-align padding
-    int pad = (int)*rsp % 8;
-    for (int k = 0; k < pad; k++)
+    // Word aligning
+	int int_rsp = (int)*rsp;
+    for (int k = 0; k < int_rsp%8; k++)
     {
-        (*rsp)--;
+        decrement_rsp(rsp);
         **(uint8_t **)rsp = 0;
     }
 
     // Pointers to the argument strings
-    (*rsp) -= 8;
+	decrement_rspn(rsp,8);
     **(char ***)rsp = 0;
 
     for (int i = argc - 1; i >= 0; i--)
     {
-        (*rsp) -= 8;
+        decrement_rspn(rsp,8);
         **(char ***)rsp = argv[i];
     }
 
-    // Return address
-    (*rsp) -= 8;
+    // returning adress
+    decrement_rspn(rsp,8);
     **(void ***)rsp = 0;
 }
 
@@ -323,17 +332,16 @@ process_exec (void *f_name) {
 	/* We first kill the current context */
 	process_cleanup ();
 
-	char *argv[64];
+	// parse the argument into argv and increment argc for each
 	int argc = 0;
+	char *argv[100];
 
-	// parsing the arguments
-	char *token;
-	char *save_ptr;
-	token = strtok_r(file_name, " ", &save_ptr);
-	while( token != NULL){
-		argv[argc] = token;
-		token = strtok_r(NULL, " ", &save_ptr);
-		argc++;
+	char *prev_ptr; // for the next argument
+	char *parsed_str = strtok_r(file_name, " ", &prev_ptr);
+	while( parsed_str != NULL){
+		argv[argc] = parsed_str;
+		parsed_str = strtok_r(NULL, " ", &prev_ptr);
+		argc = argc+1;
 	}
 
 	/* And then load the binary */
@@ -345,12 +353,11 @@ process_exec (void *f_name) {
 		return -1;
 	}
 
-	// putting the arguments on the stack
+	// putting the acquired args on stack
 	void **rspp = &_if.rsp;
-	argument_stack(argv, argc, rspp);
-	_if.R.rdi = argc;
+	set_arg_stack(argv, argc, rspp);
     _if.R.rsi = (uint64_t)*rspp + sizeof(void *);
-	// hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)*rspp, true);
+	_if.R.rdi = argc;
     palloc_free_page(file_name);
 
 	/* Start switched process. */
