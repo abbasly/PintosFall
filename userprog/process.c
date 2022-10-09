@@ -350,7 +350,7 @@ process_exec (void *f_name) {
 	argument_stack(argv, argc, rspp);
 	_if.R.rdi = argc;
     _if.R.rsi = (uint64_t)*rspp + sizeof(void *);
-	hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)*rspp, true);
+	// hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)*rspp, true);
     palloc_free_page(file_name);
 
 	/* Start switched process. */
@@ -370,6 +370,8 @@ process_exec (void *f_name) {
  * does nothing. */
 int process_wait(tid_t child_tid UNUSED)
 {
+	// for (int i = 0; i < 1000000000; i++){};
+	// return -1;
     struct thread *child = get_child(child_tid);
     // 본인의 자식이 아닌경우(호출 프로세스의 하위 항목이 아닌 경우)
     if (child == NULL)

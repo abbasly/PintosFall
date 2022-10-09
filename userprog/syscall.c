@@ -195,6 +195,7 @@ unsigned tell(int fd)
     }
     return file_tell(tell_file);
 }
+
 void close(int fd)
 {
     struct file *fileobj = find_file_by_fd(fd);
@@ -219,6 +220,7 @@ int write (int fd, const void *buffer, unsigned size){
       if (cur->stdout_count == 0) {
          NOT_REACHED();
          process_close_file(fd); ///// TODOOO
+        //  close(fd);
          writesize = -1;
       }
       else{

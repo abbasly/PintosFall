@@ -249,6 +249,20 @@ thread_create (const char *name, int priority,
 	init_thread (t, name, priority);
 	tid = t->tid = allocate_tid ();
 
+	struct thread *curr = thread_current();
+	list_push_back(&curr->child_list, &t->child_elem);
+
+	t->fd_table = palloc_get_multiple(PAL_ZERO, FDT_PAGES);
+	if (t->fd_table == NULL) {
+		return TID_ERROR;
+	}
+	t->fd_idx = 2; // 0은 stdin, 1은 stdout에 이미 할당
+	t->fd_table[0] = 1;	// stdin 자리
+	t->fd_table[1] = 2;	// stdout 자리
+
+	t->stdin_count = 1;
+	t->stdout_count = 1;
+
 	/* Call the kernel_thread if it scheduled.
 	 * Note) rdi is 1st argument, and rsi is 2nd argument. */
 	t->tf.rip = (uintptr_t) kernel_thread;
@@ -261,7 +275,7 @@ thread_create (const char *name, int priority,
 	t->tf.eflags = FLAG_IF;
 
 	thread_unblock (t);
-	// thread_check_preemption();
+	thread_check_preemption();
 	return tid;
 }
 
@@ -428,7 +442,7 @@ thread_set_priority (int new_priority) {
     	if (front->priority > cur->priority)
       	cur->priority = front->priority;
   };
-	// thread_check_preemption();
+	thread_check_preemption();
 }
 
 /* Returns the current thread's priority. */
@@ -541,6 +555,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
 	ASSERT (name != NULL);
 
+	
 	memset (t, 0, sizeof *t);
 	t->status = THREAD_BLOCKED;
 	strlcpy (t->name, name, sizeof t->name);
@@ -555,6 +570,12 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->nice = NICE_DEFAULT;
 	t->recent_cpu = RECENT_CPU_DEFAULT;
 
+	list_init(&t->child_list);
+	sema_init(&t->wait_sema,0);
+	sema_init(&t->fork_sema,0);
+	sema_init(&t->free_sema,0);
+
+	t->running = NULL;
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
