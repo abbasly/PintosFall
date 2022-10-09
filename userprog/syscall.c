@@ -24,6 +24,20 @@ void syscall_handler (struct intr_frame *);
 const int STDIN = 1;
 const int STDOUT = 2; // extra?
 
+static struct file *find_file_by_fd(int fd);
+void check_address(uaddr);
+void halt(void);
+void exit(int status);
+bool create(const char *file, unsigned initial_size);
+bool remove(const char *file);
+int open(const char *file);
+int filesize(int fd);
+int read(int fd, void *buffer, unsigned size);
+int write(int fd, const void *buffer, unsigned size);
+void seek(int fd, unsigned position);
+unsigned tell(int fd);
+void close(int fd);
+
 /* System call.
  *
  * Previously system call services was handled by the interrupt handler
@@ -220,6 +234,48 @@ int write (int fd, const void *buffer, unsigned size){
    return writesize;
 }
 
+
+void halt(void)
+{
+    power_off();
+}
+
+bool create(const char *file, unsigned initial_size)
+{
+    check_address(file);
+    return filesys_create(file, initial_size);
+}
+
+bool remove(const char *file)
+{
+    check_address(file);
+    return filesys_remove(file);
+}
+
+int exec(char *file_name)
+{
+    check_address(file_name);
+    int file_size = strlen(file_name) + 1;
+    char *fn_copy = palloc_get_page(PAL_ZERO);
+    if (fn_copy == NULL)
+    {
+        exit(-1);
+    }
+    strlcpy(fn_copy, file_name, file_size); // file 이름만 복사
+    if (process_exec(fn_copy) == -1)
+    {
+        return -1;
+    }
+    NOT_REACHED();
+    return 0;
+}
+
+tid_t fork(const char *thread_name, struct intr_frame *f)
+{
+    return process_fork(thread_name, f);
+}
+
+
 void
 syscall_init (void) {
 	write_msr(MSR_STAR, ((uint64_t)SEL_UCSEG - 0x10) << 48  |
@@ -236,8 +292,32 @@ syscall_init (void) {
 
 void syscall_handler(struct intr_frame *f UNUSED)
 {
-    switch (f->R.rax)
+    switch (f->R.rax) // rax는 system call number이다.
     {
+    case SYS_HALT:
+        halt();
+        break;
+    case SYS_EXIT:
+        exit(f->R.rdi); //실행할 때 첫번째 인자가 R.rdi에 저장됨
+        break;
+    case SYS_FORK:
+        f->R.rax = fork(f->R.rdi, f);
+        break;
+    case SYS_EXEC:
+        if (exec(f->R.rdi) == -1)
+        {
+            exit(-1);
+        }
+        break;
+    case SYS_WAIT:
+        f->R.rax = process_wait(f->R.rdi);
+        break;
+    case SYS_CREATE:
+        f->R.rax = create(f->R.rdi, f->R.rsi);
+        break;
+    case SYS_REMOVE:
+        f->R.rax = remove(f->R.rdi);
+        break;
     case SYS_OPEN:
         f->R.rax = open(f->R.rdi);
         break;

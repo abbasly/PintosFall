@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "threads/synch.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -133,6 +134,17 @@ struct thread {
 	int exit_status;
 	int stdin_count;
 	int stdout_count;
+
+	struct intr_frame parent_if;
+    struct semaphore fork_sema;
+
+	struct list child_list; // parent가 가진 child_list
+    struct list_elem child_elem;
+
+	struct semaphore wait_sema;
+    struct semaphore free_sema;
+
+	struct file *running;
 
 
 };
