@@ -3,6 +3,15 @@
 
 #include "filesys/off_t.h"
 
+#include <stdbool.h>
+/* An open file. */
+struct file {
+	struct inode *inode;        /* File's inode. */
+	off_t pos;                  /* Current position. */
+	bool deny_write;            /* Has file_deny_write() been called? */
+	int dup_count;				// 0일때만 close
+};
+
 struct inode;
 
 /* Opening and closing files. */
