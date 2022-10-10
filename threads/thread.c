@@ -217,6 +217,15 @@ thread_print_stats (void) {
 			idle_ticks, kernel_ticks, user_ticks);
 }
 
+void thread_init_fd(struct thread* t){
+	t->fd_idx = 2; // 0 and 1 are for stdin and stdout resp.
+	t->file_desc_table[0] = 1;
+	t->file_desc_table[1] = 2;
+
+	t->stdin_count = 1;
+	t->stdout_count = 1;
+}
+
 /* Creates a new kernel thread named NAME with the given initial
    PRIORITY, which executes FUNCTION passing AUX as the argument,
    and adds it to the ready queue.  Returns the thread identifier
@@ -256,12 +265,8 @@ thread_create (const char *name, int priority,
 	if (t->file_desc_table == NULL) {
 		return TID_ERROR;
 	}
-	t->fd_idx = 2; // 0은 stdin, 1은 stdout에 이미 할당
-	t->file_desc_table[0] = 1;	// stdin 자리
-	t->file_desc_table[1] = 2;	// stdout 자리
 
-	t->stdin_count = 1;
-	t->stdout_count = 1;
+	thread_init_fd(t);
 
 	/* Call the kernel_thread if it scheduled.
 	 * Note) rdi is 1st argument, and rsi is 2nd argument. */
@@ -571,9 +576,10 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->recent_cpu = RECENT_CPU_DEFAULT;
 
 	list_init(&t->child_list);
-	sema_init(&t->wait_sema,0);
 	sema_init(&t->fork_sema,0);
 	sema_init(&t->free_sema,0);
+	sema_init(&t->wait_sema,0);
+	
 
 	t->running = NULL;
 }

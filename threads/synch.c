@@ -117,8 +117,8 @@ sema_up (struct semaphore *sema) {
 		thread_unblock (to_be_unblocked);}
 	sema->value = sema->value+1;
 	intr_set_level (old_level);
-	if (!intr_context()){
-	thread_check_preemption();}
+	if (!intr_context()) // Fix the kernel panic error
+		thread_check_preemption();
 }
 
 static void sema_test_helper (void *sema_);
