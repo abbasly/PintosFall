@@ -4,6 +4,8 @@
 #include "filesys/off_t.h"
 
 #include <stdbool.h>
+
+// ** Move this struct from file.c to here ** //
 /* An open file. */
 struct file {
 	struct inode *inode;        /* File's inode. */

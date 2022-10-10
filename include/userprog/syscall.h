@@ -5,6 +5,6 @@
 
 void syscall_init (void);
 
-struct lock filesys_lock;
+struct lock file_lock;
 
 #endif /* userprog/syscall.h */

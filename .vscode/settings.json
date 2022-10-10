@@ -2,6 +2,7 @@
     "files.associations": {
         "*.inc": "c",
         "vm.h": "c",
-        "cstdlib": "c"
+        "cstdlib": "c",
+        "filesys.h": "c"
     }
 }

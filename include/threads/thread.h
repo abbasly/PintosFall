@@ -31,7 +31,7 @@ typedef int tid_t;
 
 // Project 2 //
 #define FDT_PAGES 3
-#define FDCOUNT_LIMIT FDT_PAGES * (1<<9)
+#define FD_LIMIT FDT_PAGES * 512
 
 
 /* A kernel thread or user process.
@@ -128,8 +128,8 @@ struct thread {
 	unsigned magic;                     /* Detects stack overflow. */
 
 	// Project 2 //
-	struct file **fd_table;
     int fd_idx;
+	struct file **file_desc_table;
 
 	int exit_status;
 	int stdin_count;

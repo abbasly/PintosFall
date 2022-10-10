@@ -8,24 +8,21 @@
 #include "threads/flags.h"
 #include "intrinsic.h"
 #include "userprog/process.h"
-
-#include "filesys/filesys.h"
-#include "filesys/file.h"
-#include <list.h>
-#include "threads/palloc.h"
 #include "threads/vaddr.h"
 #include "userprog/process.h"
 #include "threads/synch.h"
 #include "include/vm/vm.h"
+#include "filesys/filesys.h"
+#include "filesys/file.h"
+#include <list.h>
+#include "threads/palloc.h"
+
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 
-const int STDIN = 1;
-const int STDOUT = 2; // extra?
-
-static struct file *find_file_by_fd(int fd);
-void check_address(uaddr);
+static struct file *fd_to_file(int fd);
+void valid_adress(uaddr);
 void halt(void);
 void exit(int status);
 bool create(const char *file, unsigned initial_size);
@@ -53,101 +50,96 @@ void close(int fd);
 
 void exit(int status)
 {
-    struct thread *cur = thread_current();
-    cur->exit_status = status;
+    thread_current()->exit_status = status;
     printf("%s: exit(%d)\n", thread_name(), status);
     thread_exit();
 }
 
 
-void check_address(void *addr)
+void valid_adress(void *addr)
 {
-    struct thread *cur = thread_current();
-    if (is_kernel_vaddr(addr) || pml4_get_page(cur->pml4, addr) == NULL)
+    if (pml4_get_page(thread_current()->pml4, addr) == NULL || is_kernel_vaddr(addr))
     {
         exit(-1);
     }
 }
 
-static struct file *find_file_by_fd(int fd)
+static struct file *fd_to_file(int fd)
 {
-    struct thread *cur = thread_current();
-    if (fd < 0 || fd >= FDCOUNT_LIMIT)
-    {
-        return NULL;
-    }
-    return cur->fd_table[fd];
+    // wrong file descriptor
+    if(fd<0) return NULL;
+    if(fd >= FD_LIMIT) return NULL;
+
+    return thread_current()->file_desc_table[fd];
 }
 
 int add_file_to_fdt(struct file *file)
 {
-    struct thread *cur = thread_current();
-    struct file **fdt = cur->fd_table;
+    struct thread *curr = thread_current();
+    struct file **fd_table = curr->file_desc_table;
 
 
-    while (cur->fd_idx < FDCOUNT_LIMIT && fdt[cur->fd_idx])
+    while (fd_table[curr->fd_idx] && curr->fd_idx < FD_LIMIT)
     {
-        cur->fd_idx++;
+        curr->fd_idx = curr->fd_idx+1;
     }
 
-    if (cur->fd_idx >= FDCOUNT_LIMIT)
-        return -1;
+    if (curr->fd_idx < FD_LIMIT){} else return -1;
 
-    fdt[cur->fd_idx] = file;
-    return cur->fd_idx;
+    fd_table[curr->fd_idx] = file;
+    return curr->fd_idx;
 }
 
 void remove_file_from_fdt(int fd)
 {
-    struct thread *cur = thread_current();
+    // wrong file descriptor
+    if(fd<0) return NULL;
+    if(fd >= FD_LIMIT) return NULL;
 
-    // error : invalid fd
-    if (fd < 0 || fd >= FDCOUNT_LIMIT)
-        return;
-
-    cur->fd_table[fd] = NULL;
+    thread_current()->file_desc_table[fd] = NULL;
 }
 
 
 int open(const char *file)
 {
-    check_address(file);
+    valid_adress(file);
     struct file *open_file = filesys_open(file);
 
-    if (open_file == NULL)
-    {
-        return -1;
-    }
-    // fd table에 file추가
-    int fd = add_file_to_fdt(open_file);
-
-    // fd table 가득 찼을경우
-    if (fd == -1)
-    {
-        file_close(open_file);
-    }
-    return fd;
+    if(open_file !=NULL){
+        // put the file to fd table
+        int fd = add_file_to_fdt(open_file);
+        
+        // if the fd table is full
+        if (fd == -1)
+        {
+            file_close(open_file);
+        }
+    return fd;} else return -1;
 }
 
 int filesize(int fd)
 {
-    struct file *open_file = find_file_by_fd(fd);
-    if (open_file == NULL)
-    {
-        return -1;
+    struct file *open_file = fd_to_file(fd);
+    if (open_file != NULL){
+        return file_length(open_file);
     }
-    return file_length(open_file);
+    return -1;
 }
 
 int read(int fd, void *buffer, unsigned size)
 {
-    check_address(buffer);
-    off_t read_byte;
+    valid_adress(buffer);
+    off_t bytes_read;
     uint8_t *read_buffer = buffer;
-    if (fd == 0)
+    char key;
+    struct file *read_file = fd_to_file(fd);
+    switch (fd)
     {
-        char key;
-        for (read_byte = 0; read_byte < size; read_byte++)
+    case 1:
+        return -1;
+        break;
+    case 0:
+        for (bytes_read = 0; bytes_read < size; bytes_read++)
         {
             key = input_getc();
             *read_buffer++ = key;
@@ -156,84 +148,72 @@ int read(int fd, void *buffer, unsigned size)
                 break;
             }
         }
-    }
-    else if (fd == 1)
-    {
-        return -1;
-    }
-    else
-    {
-        struct file *read_file = find_file_by_fd(fd);
+    default:
         if (read_file == NULL)
         {
             return -1;
         }
-        lock_acquire(&filesys_lock);
-        read_byte = file_read(read_file, buffer, size);
-        lock_release(&filesys_lock);
+        lock_acquire(&file_lock);
+        bytes_read = file_read(read_file, buffer, size);
+        lock_release(&file_lock);
+        break;
     }
-    return read_byte;
+    return bytes_read;
 }
 
-void seek(int fd, unsigned position)
+void seek(int fd, unsigned pos)
 {
-    struct file *seek_file = find_file_by_fd(fd);
-    // 0,1,2는 이미 정의되어 있음
-    if (seek_file <= 2)
-    {
-        return;
-    }
-    seek_file->pos = position;
+    struct file *file_sk = fd_to_file(fd);
+    // 0,1, and 2 are already defined
+    if (file_sk < 3)
+    return;
+    file_sk->pos = pos;
 }
 
 unsigned tell(int fd)
 {
-    struct file *tell_file = find_file_by_fd(fd);
-    if (tell_file <= 2)
-    {
-        return;
+    struct file *tell_file = fd_to_file(fd);
+    if (tell_file >= 3){
+        return file_tell(tell_file);
     }
-    return file_tell(tell_file);
+    return;
 }
 
 void close(int fd)
 {
-    struct file *fileobj = find_file_by_fd(fd);
-    if (fileobj == NULL)
-    {
-        return;
+    struct file *file = fd_to_file(fd);
+    if (file != NULL){
+        remove_file_from_fdt(fd);
     }
-
-    remove_file_from_fdt(fd);
+    return;
 }
 
 int write (int fd, const void *buffer, unsigned size){
-   check_address(buffer);
-   struct file *f = find_file_by_fd(fd);
-   int writesize;
-   struct thread *cur = thread_current();
+    valid_adress(buffer);
+    struct thread *curr = thread_current();
+    struct file *file = fd_to_file(fd);
+    int write_size;
 
-   if (f == NULL) return -1;
-   if (f == STDIN) return -1;
+    if (file == NULL) return -1;
+    if (file == 1) return -1; // stdin
 
-   if (f == STDOUT){
-      if (cur->stdout_count == 0) {
-         NOT_REACHED();
-         process_close_file(fd); ///// TODOOO
-        //  close(fd);
-         writesize = -1;
-      }
-      else{
-         putbuf(buffer, size);
-         writesize = size;
-      }
+    if (file == 2){ // stdout
+        if(curr->stdout_count != 0){
+            putbuf(buffer, size);
+            write_size = size;
+        }
+        else{
+            NOT_REACHED();
+            close(fd);
+            write_size = -1;
+        }
    }
    else{
-      lock_acquire(&filesys_lock);
-      writesize = file_write(f, buffer, size);
-      lock_release(&filesys_lock);
+      lock_acquire(&file_lock);
+      write_size = file_write(file, buffer, size);
+      lock_release(&file_lock);
    }
-   return writesize;
+   return write_size;
 }
 
 
@@ -242,34 +222,34 @@ void halt(void)
     power_off();
 }
 
-bool create(const char *file, unsigned initial_size)
+bool create(const char *file, unsigned init_size)
 {
-    check_address(file);
-    return filesys_create(file, initial_size);
+    valid_adress(file);
+    bool ret = filesys_create(file, init_size);
+    return ret;
 }
 
 bool remove(const char *file)
 {
-    check_address(file);
-    return filesys_remove(file);
+    valid_adress(file);
+    bool ret = filesys_remove(file);
+    return ret;
 }
 
-int exec(char *file_name)
+int exec(char *file)
 {
-    check_address(file_name);
-    int file_size = strlen(file_name) + 1;
+    valid_adress(file);
+    int file_size = strlen(file) + 1;
     char *fn_copy = palloc_get_page(PAL_ZERO);
-    if (fn_copy == NULL)
-    {
-        exit(-1);
-    }
-    strlcpy(fn_copy, file_name, file_size); // file 이름만 복사
-    if (process_exec(fn_copy) == -1)
-    {
+    if (fn_copy != NULL){
+        strlcpy(fn_copy, file, file_size);
+        if (process_exec(fn_copy) != -1){
+            NOT_REACHED();
+            return 0;
+                }
         return -1;
     }
-    NOT_REACHED();
-    return 0;
+    exit(-1);
 }
 
 tid_t fork(const char *thread_name, struct intr_frame *f)
@@ -289,39 +269,18 @@ syscall_init (void) {
 	 * mode stack. Therefore, we masked the FLAG_FL. */
 	write_msr(MSR_SYSCALL_MASK,
 			FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
-	lock_init(&filesys_lock);
+	lock_init(&file_lock);
 }
 
 void syscall_handler(struct intr_frame *f UNUSED)
 {
-    switch (f->R.rax) // rax는 system call number이다.
+    switch (f->R.rax) // system call number
     {
     case SYS_HALT:
         halt();
         break;
     case SYS_EXIT:
-        exit(f->R.rdi); //실행할 때 첫번째 인자가 R.rdi에 저장됨
-        break;
-    case SYS_FORK:
-        f->R.rax = fork(f->R.rdi, f);
-        break;
-    case SYS_EXEC:
-        if (exec(f->R.rdi) == -1)
-        {
-            exit(-1);
-        }
-        break;
-    case SYS_WAIT:
-        f->R.rax = process_wait(f->R.rdi);
-        break;
-    case SYS_CREATE:
-        f->R.rax = create(f->R.rdi, f->R.rsi);
-        break;
-    case SYS_REMOVE:
-        f->R.rax = remove(f->R.rdi);
-        break;
-    case SYS_OPEN:
-        f->R.rax = open(f->R.rdi);
+        exit(f->R.rdi);
         break;
     case SYS_FILESIZE:
         f->R.rax = filesize(f->R.rdi);
@@ -332,14 +291,35 @@ void syscall_handler(struct intr_frame *f UNUSED)
     case SYS_WRITE:
         f->R.rax = write(f->R.rdi, f->R.rsi, f->R.rdx);
         break;
+    case SYS_FORK:
+        f->R.rax = fork(f->R.rdi, f);
+        break;
+    case SYS_EXEC:
+        if (exec(f->R.rdi) == -1)
+        {
+            exit(-1);
+        }
+        break;
+    case SYS_CLOSE:
+        close(f->R.rdi);
+        break;
+    case SYS_WAIT:
+        f->R.rax = process_wait(f->R.rdi);
+        break;
+    case SYS_REMOVE:
+        f->R.rax = remove(f->R.rdi);
+        break;
+    case SYS_OPEN:
+        f->R.rax = open(f->R.rdi);
+        break;
+    case SYS_CREATE:
+        f->R.rax = create(f->R.rdi, f->R.rsi);
+        break;
     case SYS_SEEK:
         seek(f->R.rdi, f->R.rsi);
         break;
     case SYS_TELL:
         f->R.rax = tell(f->R.rdi);
-        break;
-    case SYS_CLOSE:
-        close(f->R.rdi);
         break;
     default:
         exit(-1);

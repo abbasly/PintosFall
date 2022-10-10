@@ -229,12 +229,12 @@ __do_fork(void *aux) // load로 볼 수도 있다(부모의 것들을 자식에�
 
     // process_init();
     // project 2 : system call
-    if (parent->fd_idx == FDCOUNT_LIMIT)
+    if (parent->fd_idx == FD_LIMIT)
         goto error;
 
-    for (int i = 0; i < FDCOUNT_LIMIT; i++)
+    for (int i = 0; i < FD_LIMIT; i++)
     {
-        struct file *file = parent->fd_table[i];
+        struct file *file = parent->file_desc_table[i];
         if (file == NULL)
             continue;
         // if 'file' is already duplicated in child don't duplicate again but share it
@@ -246,7 +246,7 @@ __do_fork(void *aux) // load로 볼 수도 있다(부모의 것들을 자식에�
                 new_file = file_duplicate(file);
             else
                 new_file = file;
-            current->fd_table[i] = new_file;
+            current->file_desc_table[i] = new_file;
         }
     }
     current->fd_idx = parent->fd_idx;
@@ -405,12 +405,12 @@ void process_exit(void)
      * TODO: project2/process_termination.html).
      * TODO: We recommend you to implement process resource cleanup here. */
     // project 2-4
-    for (int i = 0; i < FDCOUNT_LIMIT; i++)
+    for (int i = 0; i < FD_LIMIT; i++)
     {
         close(i);
     }
     // for multi-oom(메모리 누수)
-    palloc_free_multiple(cur->fd_table, FDT_PAGES);
+    palloc_free_multiple(cur->file_desc_table, FDT_PAGES);
     // for rox- (실행중에 수정 못하도록)
     file_close(cur->running);
 
