@@ -22,6 +22,8 @@
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 
+void *mmap (void *addr, size_t length, int writable, int fd, off_t offset);
+void munmap (void *addr);
 static struct file *fd_to_file(int fd);
 void valid_adress(uaddr);
 void halt(void);
@@ -287,6 +289,22 @@ syscall_init (void) {
 	lock_init(&file_lock);
 }
 
+void *mmap (void *addr, size_t length, int writable, int fd, off_t offset){
+   
+   if (addr == NULL || !(is_user_vaddr(addr)) || (long)length <= 0 || fd < 2 
+      || addr != pg_round_down(addr) || offset % PGSIZE != 0){ 
+      return NULL;
+   }
+
+   struct file *file = fd_to_file(fd);
+
+   return do_mmap(addr, length, writable, file, offset);
+}
+
+void munmap (void *addr){
+	do_munmap(addr);
+}
+
 void syscall_handler(struct intr_frame *f UNUSED)
 {
     struct thread*t = thread_current();
@@ -295,6 +313,12 @@ void syscall_handler(struct intr_frame *f UNUSED)
     {
     case SYS_HALT:
         halt();
+        break;
+    case SYS_MMAP:
+        f->R.rax = mmap(f->R.rdi, f->R.rsi, f->R.rdx, f->R.r10, f->R.r8);
+        break;
+    case SYS_MUNMAP:
+        munmap(f->R.rdi);
         break;
     case SYS_EXIT:
         exit(f->R.rdi);
