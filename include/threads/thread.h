@@ -147,7 +147,7 @@ struct thread {
     
 
 	struct file *running;
-
+	uintptr_t rsp;
 
 };
 

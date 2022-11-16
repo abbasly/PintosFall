@@ -16,6 +16,7 @@
 #include "filesys/file.h"
 #include <list.h>
 #include "threads/palloc.h"
+#include "include/vm/vm.h"
 
 
 void syscall_entry (void);
@@ -58,10 +59,17 @@ void exit(int status)
 
 void valid_adress(void *addr)
 {
-    if (pml4_get_page(thread_current()->pml4, addr) == NULL || is_kernel_vaddr(addr))
-    {
-        exit(-1);
-    }
+
+	#ifndef VM
+	if (addr == NULL || !(is_user_vaddr(addr)) || !pml4_get_page(thread_current()->pml4, addr))
+	{
+		exit(-1);
+	}
+	#else
+	if (addr == NULL || !(is_user_vaddr(addr))){
+		exit(-1);
+	}
+	#endif
 }
 
 static struct file *fd_to_file(int fd)
@@ -129,6 +137,13 @@ int filesize(int fd)
 int read(int fd, void *buffer, unsigned size)
 {
     valid_adress(buffer);
+    struct thread *cur = thread_current();
+
+	#ifdef VM
+		/* project3 - writable이 true가 아닌데, buffer에 쓰려고하면 안됨. */
+		struct page* p = spt_find_page(&cur->spt, buffer);
+		if (p && !p->writable) exit(-1);
+	#endif
     off_t bytes_read;
     uint8_t *read_buffer = buffer;
     char key;
@@ -274,6 +289,8 @@ syscall_init (void) {
 
 void syscall_handler(struct intr_frame *f UNUSED)
 {
+    struct thread*t = thread_current();
+	t->rsp = f->rsp;
     switch (f->R.rax) // system call number
     {
     case SYS_HALT:

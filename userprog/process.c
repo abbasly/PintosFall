@@ -296,6 +296,9 @@ process_exec (void *f_name) {
 	/* We first kill the current context */
 	process_cleanup ();
 
+#ifdef VM
+	supplemental_page_table_init(&thread_current()->spt);
+#endif
 	// parse the argument into argv and increment argc for each
 	int argc = 0;
 	char *argv[100];
@@ -734,10 +737,33 @@ install_page (void *upage, void *kpage, bool writable) {
  * upper block. */
 
 static bool
-lazy_load_segment (struct page *page, void *aux) {
-	/* TODO: Load the segment from the file */
-	/* TODO: This called when the first page fault occurs on address VA. */
-	/* TODO: VA is available when calling this function. */
+lazy_load_segment(struct page *page, void *aux)
+{
+    /* TODO: Load the segment from the file */
+    /* TODO: This called when the first page fault occurs on address VA. */
+    /* TODO: VA is available when calling this function. */
+    struct aux_data* aux_dt = aux;
+    struct file* f = aux_dt->file;
+    file_seek(f, aux_dt->ofs);
+
+    if (VM_TYPE(page->operations->type) == VM_FILE){
+        page->file.cnt = aux_dt->cnt;
+        page->file.file = aux_dt->file;
+        page->file.read_bytes = aux_dt->read_bytes;
+        page->file.zero_bytes = aux_dt->zero_bytes;
+		page->file.ofs = aux_dt->ofs;
+		file_read(f, page->frame->kva, aux_dt->read_bytes);
+    }else {
+		if (file_read(f, page->frame->kva, aux_dt->read_bytes) != (int)aux_dt->read_bytes){
+        palloc_free_page(page->frame->kva);
+        return false;
+    	}
+	}
+
+    memset(page->frame->kva + aux_dt->read_bytes, 0, aux_dt->zero_bytes);
+    free(aux_dt);
+
+    return true;
 }
 
 /* Loads a segment starting at offset OFS in FILE at address
@@ -755,13 +781,15 @@ lazy_load_segment (struct page *page, void *aux) {
  * Return true if successful, false if a memory allocation error
  * or disk read error occurs. */
 static bool
-load_segment (struct file *file, off_t ofs, uint8_t *upage,
-		uint32_t read_bytes, uint32_t zero_bytes, bool writable) {
-	ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
-	ASSERT (pg_ofs (upage) == 0);
-	ASSERT (ofs % PGSIZE == 0);
+load_segment(struct file *file, off_t ofs, uint8_t *upage,
+			 uint32_t read_bytes, uint32_t zero_bytes, bool writable)
+{
+	ASSERT((read_bytes + zero_bytes) % PGSIZE == 0);
+	ASSERT(pg_ofs(upage) == 0);
+	ASSERT(ofs % PGSIZE == 0);
 
-	while (read_bytes > 0 || zero_bytes > 0) {
+	while (read_bytes > 0 || zero_bytes > 0)
+	{
 		/* Do calculate how to fill this page.
 		 * We will read PAGE_READ_BYTES bytes from FILE
 		 * and zero the final PAGE_ZERO_BYTES bytes. */
@@ -769,14 +797,23 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
 		/* TODO: Set up aux to pass information to the lazy_load_segment. */
-		void *aux = NULL;
-		if (!vm_alloc_page_with_initializer (VM_ANON, upage,
-					writable, lazy_load_segment, aux))
+		struct aux_data *aux_dt = calloc(1,sizeof(struct aux_data));
+
+		aux_dt->file = file;
+		aux_dt->ofs = ofs;
+		aux_dt->read_bytes = page_read_bytes;
+		aux_dt->zero_bytes = page_zero_bytes;
+		void *aux = aux_dt;
+		if (!vm_alloc_page_with_initializer(VM_ANON, upage,
+											writable, lazy_load_segment, aux)){
+			free(aux_dt);
 			return false;
+		}
 
 		/* Advance. */
 		read_bytes -= page_read_bytes;
 		zero_bytes -= page_zero_bytes;
+		ofs += page_read_bytes;
 		upage += PGSIZE;
 	}
 	return true;
@@ -784,15 +821,22 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
 /* Create a PAGE of stack at the USER_STACK. Return true on success. */
 static bool
-setup_stack (struct intr_frame *if_) {
+setup_stack(struct intr_frame *if_)
+{
 	bool success = false;
-	void *stack_bottom = (void *) (((uint8_t *) USER_STACK) - PGSIZE);
+	void *stack_bottom = (void *)(((uint8_t *)USER_STACK) - PGSIZE);
 
 	/* TODO: Map the stack on stack_bottom and claim the page immediately.
 	 * TODO: If success, set the rsp accordingly.
 	 * TODO: You should mark the page is stack. */
 	/* TODO: Your code goes here */
 
+	if (vm_alloc_page(VM_ANON | VM_MARKER_0, stack_bottom, true) &&
+		vm_claim_page(stack_bottom)){
+		if_->rsp = USER_STACK;
+		success = true;
+		// memset(stack_bottom, 0, PGSIZE);
+	}
 	return success;
 }
 #endif /* VM */
