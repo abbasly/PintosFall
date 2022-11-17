@@ -82,21 +82,25 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void *upage, bool writabl
 }
 
 /* Find VA from spt and return page. On error, return NULL. */
-/* 지정된 supplemental page table에서 va에 해당하는 struct page를 찾는다. 실패 시 NULL을 반환한다. */
+/* Find the structure page corresponding to va in the specified supplementary page table. Returns NULL on failure. */
 struct page *
 spt_find_page(struct supplemental_page_table *spt UNUSED, void *va UNUSED)
 {
-	struct page *page = NULL;
+	struct page *pg = NULL;
 	/* TODO: Fill this function. */
-	struct hash_elem *e;
+	struct hash_elem *hash_el;
 
-	page = (struct page *)calloc(1, sizeof(struct page));
-	page->va = pg_round_down(va);
+	pg = (struct page *)calloc(1, sizeof(struct page));
+	pg->va = pg_round_down(va);
 
-	e = hash_find(&spt->pages, &page->hash_elem);
-	free(page);
+	hash_el = hash_find(&spt->pages, &pg->hash_elem);
+	free(pg);
 
-	return e != NULL ? hash_entry(e, struct page, hash_elem) : NULL;
+	if(hash_el == NULL ){
+		return NULL;
+	} else {
+		return hash_entry(hash_el, struct page, hash_elem);
+	}
 }
 
 /* Insert PAGE into spt with validation. */
@@ -105,12 +109,11 @@ bool spt_insert_page(struct supplemental_page_table *spt UNUSED,
 {
 	/* TODO: Fill this function. */
 
-	// page->va = pg_round_down(page->va);
-	if (hash_insert(&spt->pages, &page->hash_elem) == NULL)
+	if (hash_insert(&spt->pages, &page->hash_elem) != NULL)
 	{
-		return true;
+		return false;
 	}
-	return false;
+	return true;
 }
 
 void spt_remove_page(struct supplemental_page_table *spt, struct page *page)
@@ -119,42 +122,41 @@ void spt_remove_page(struct supplemental_page_table *spt, struct page *page)
 }
 
 /* Get the struct frame, that will be evicted. */
-/* 프레임테이블을 순회하며 희생자 페이지를 고르는 함수 */
+/* Function to navigate the frame table and select the victim's page */
 static struct frame *
 vm_get_victim(void)
 {
-	// 희생자 페이지를 결정하는 동안, 다른 프로세스에서도 희생자 페이지를 고르면 안되기 때문에 lock을 걸어줌
+	// While determining the victim's page, lock the victim's page because no other process should select it
 	lock_acquire(&lock_fr);
 	struct frame *victim = NULL;
 	/* TODO: The policy for eviction is up to you. */
-	// clock 알고리즘. 
+	// clock algo
+	struct frame *fr;
+	struct list_elem *e;
 	
-	struct list_elem *elem;
-	struct frame *frame;
 
-	for (elem = list_begin(&list_fr); elem != list_end(&list_fr);
-		 elem = list_next(elem)){
+	for (e = list_begin(&list_fr); e != list_end(&list_fr);
+		 e = list_next(e)){
 		
-		frame = list_entry(elem, struct frame, frame_elem);
+		fr = list_entry(e, struct frame, frame_elem);
 		
-		bool access = pml4_is_accessed(frame->thread->pml4, frame->page->va);
+		bool access = pml4_is_accessed(fr->thread->pml4, fr->page->va);
 
-		if (!access){ // access bit가 0이라면 당첨
-			victim = frame;
-			list_remove(&frame->frame_elem); // victim 변수에 담은 뒤, 프레임 테이블에서 제거
+		if (!access){ // If access bit is 0, you win
+			victim = fr;
+			list_remove(&fr->frame_elem); // Put it in the victim variable and remove it from the frame table
 			break;
 		}else{
-			pml4_set_accessed(frame->thread->pml4, frame->page->va, false); // 1이라면 0으로 변환해줌
+			pml4_set_accessed(fr->thread->pml4, fr->page->va, false); // If it's 1, it's converted to 0
 		}
 		
 	}
-	/* 찾은 희생자 페이지가 없다면 프레임 리스트의 첫번째 녀석을 희생자 페이지로 결정 -> 모든 프레임이 0으로 세팅되었기 때문 */
+	/* If there is no victim page found, determine the first person in the frame list as the victim page -> because all frames were set to zero*/
 	if (victim == NULL){
 		victim = list_entry(list_pop_front(&list_fr), struct frame, frame_elem);
 		
 	}
 	lock_release(&lock_fr);
-	// printf("\nvm_get_victim() end %p\n", victim);
 	return victim;
 }
 
