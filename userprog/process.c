@@ -736,32 +736,38 @@ install_page (void *upage, void *kpage, bool writable) {
  * If you want to implement the function for only project 2, implement it on the
  * upper block. */
 
-bool
-lazy_load_segment(struct page *page, void *aux)
-{
-    /* TODO: Load the segment from the file */
-    /* TODO: This called when the first page fault occurs on address VA. */
-    /* TODO: VA is available when calling this function. */
-    struct container* aux_dt = aux;
-    struct file* f = aux_dt->file;
-    file_seek(f, aux_dt->ofs);
+void assign_file_value(struct page* pg, struct container* cont){
+	pg->file.zero_bytes = cont->zero_bytes;
+    pg->file.read_bytes = cont->read_bytes;
+    pg->file.cnt = cont->cnt;
+    pg->file.file = cont->file;
+	pg->file.ofs = cont->ofs;
+}
 
-    if (VM_TYPE(page->operations->type) == VM_FILE){
-        page->file.cnt = aux_dt->cnt;
-        page->file.file = aux_dt->file;
-        page->file.read_bytes = aux_dt->read_bytes;
-        page->file.zero_bytes = aux_dt->zero_bytes;
-		page->file.ofs = aux_dt->ofs;
-		file_read(f, page->frame->kva, aux_dt->read_bytes);
-    }else {
-		if (file_read(f, page->frame->kva, aux_dt->read_bytes) != (int)aux_dt->read_bytes){
-        palloc_free_page(page->frame->kva);
+bool
+lazy_load_segment(struct page *pg, void *aux)
+{
+    struct container* cont = aux;
+    struct file* file_ = cont->file;
+    file_seek(file_, cont->ofs);
+
+	switch (VM_TYPE(pg->operations->type))
+	{
+	case VM_FILE:
+		assign_file_value(pg, cont);
+		file_read(file_, pg->frame->kva, cont->read_bytes);
+		break;
+	default:
+		if ((int)cont->read_bytes == file_read(file_, pg->frame->kva, cont->read_bytes)){}
+		else {
+        palloc_free_page(pg->frame->kva);
         return false;
     	}
+		break;
 	}
 
-    memset(page->frame->kva + aux_dt->read_bytes, 0, aux_dt->zero_bytes);
-    free(aux_dt);
+    memset(pg->frame->kva + cont->read_bytes, 0, cont->zero_bytes);
+    free(cont);
 
     return true;
 }
@@ -790,31 +796,28 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
 
 	while (read_bytes > 0 || zero_bytes > 0)
 	{
-		/* Do calculate how to fill this page.
-		 * We will read PAGE_READ_BYTES bytes from FILE
-		 * and zero the final PAGE_ZERO_BYTES bytes. */
 		size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
 		/* TODO: Set up aux to pass information to the lazy_load_segment. */
-		struct container *aux_dt = calloc(1,sizeof(struct container));
-
-		aux_dt->file = file;
-		aux_dt->ofs = ofs;
-		aux_dt->read_bytes = page_read_bytes;
-		aux_dt->zero_bytes = page_zero_bytes;
-		void *aux = aux_dt;
-		if (!vm_alloc_page_with_initializer(VM_ANON, upage,
-											writable, lazy_load_segment, aux)){
-			free(aux_dt);
+		struct container *cont = calloc(1,sizeof(struct container));
+		cont->ofs = ofs;
+		cont->file = file;
+		cont->read_bytes = page_read_bytes;
+		cont->zero_bytes = page_zero_bytes;
+		void *aux = cont;
+		if (vm_alloc_page_with_initializer(VM_ANON, upage,
+											writable, lazy_load_segment, aux)){}
+		else {
+			free(cont);
 			return false;
 		}
 
 		/* Advance. */
-		read_bytes -= page_read_bytes;
-		zero_bytes -= page_zero_bytes;
-		ofs += page_read_bytes;
-		upage += PGSIZE;
+		zero_bytes = zero_bytes - page_zero_bytes;
+		read_bytes = read_bytes - page_read_bytes;
+		ofs = ofs + page_read_bytes;
+		upage = upage + PGSIZE;
 	}
 	return true;
 }

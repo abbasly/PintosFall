@@ -88,9 +88,9 @@ file_backed_destroy (struct page *page) {
     }
 
     if (page->frame != NULL){
-        lock_acquire(&frame_lock);
+        lock_acquire(&lock_fr);
         list_remove(&page->frame->frame_elem);
-        lock_release(&frame_lock);
+        lock_release(&lock_fr);
 		free(page->frame);
 	}
 }

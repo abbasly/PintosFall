@@ -3,6 +3,7 @@
         "*.inc": "c",
         "vm.h": "c",
         "cstdlib": "c",
-        "filesys.h": "c"
+        "filesys.h": "c",
+        "vaddr.h": "c"
     }
 }

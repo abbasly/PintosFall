@@ -20,8 +20,8 @@ void vm_init(void)
 	register_inspect_intr();
 	/* DO NOT MODIFY UPPER LINES. */
 	/* TODO: Your code goes here. */
-	list_init(&frame_list);
-	lock_init(&frame_lock);
+	list_init(&list_fr);
+	lock_init(&lock_fr);
 }
 
 /* Get the type of the page. This function is useful if you want to know the
@@ -129,7 +129,7 @@ static struct frame *
 vm_get_victim(void)
 {
 	// 희생자 페이지를 결정하는 동안, 다른 프로세스에서도 희생자 페이지를 고르면 안되기 때문에 lock을 걸어줌
-	lock_acquire(&frame_lock);
+	lock_acquire(&lock_fr);
 	struct frame *victim = NULL;
 	/* TODO: The policy for eviction is up to you. */
 	// clock 알고리즘. 
@@ -137,7 +137,7 @@ vm_get_victim(void)
 	struct list_elem *elem;
 	struct frame *frame;
 
-	for (elem = list_begin(&frame_list); elem != list_end(&frame_list);
+	for (elem = list_begin(&list_fr); elem != list_end(&list_fr);
 		 elem = list_next(elem)){
 		
 		frame = list_entry(elem, struct frame, frame_elem);
@@ -155,10 +155,10 @@ vm_get_victim(void)
 	}
 	/* 찾은 희생자 페이지가 없다면 프레임 리스트의 첫번째 녀석을 희생자 페이지로 결정 -> 모든 프레임이 0으로 세팅되었기 때문 */
 	if (victim == NULL){
-		victim = list_entry(list_pop_front(&frame_list), struct frame, frame_elem);
+		victim = list_entry(list_pop_front(&list_fr), struct frame, frame_elem);
 		
 	}
-	lock_release(&frame_lock);
+	lock_release(&lock_fr);
 	// printf("\nvm_get_victim() end %p\n", victim);
 	return victim;
 }
@@ -211,9 +211,9 @@ vm_get_frame(void)
 	frame->thread = thread_current();
 	frame->kva = kva;
 
-	lock_acquire(&frame_lock);
-	list_push_back(&frame_list, &frame->frame_elem);
-	lock_release(&frame_lock);
+	lock_acquire(&lock_fr);
+	list_push_back(&list_fr, &frame->frame_elem);
+	lock_release(&lock_fr);
 
 	return frame;
 }

@@ -4,7 +4,7 @@
 struct page;
 enum vm_type;
 
-struct lock bitmap_lock;
+struct lock lock_bit;
 
 struct anon_page {
     enum vm_type type;

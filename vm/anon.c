@@ -29,7 +29,7 @@ void
 vm_anon_init (void) {
 	/* 필요에 따라 수정 가능한 함수 - 아직까지 수정 안 함. */
 	/* TODO: Set up the swap_disk. */
-	lock_init(&bitmap_lock);
+	lock_init(&lock_bit);
 	swap_disk = disk_get(1,1); // 디스크에 스왑 공간을 생성
 	size_t swap_size = disk_size(swap_disk)/SECTORS_PER_PAGE; // 필요한 스왑슬롯의 총 갯수
 	swap_table = bitmap_create(swap_size); // swap_size만큼 swaptable을 생성
@@ -53,7 +53,7 @@ static bool
 anon_swap_in (struct page *page, void *kva) {
 	// printf("\n-----------swap_in_entry------------\n");
 	struct anon_page *anon_page = &page->anon;
-	lock_acquire(&bitmap_lock);
+	lock_acquire(&lock_bit);
 	size_t swap_slot = anon_page->slot_number;
 
 	for(int i = 0; i < SECTORS_PER_PAGE; i++){
@@ -61,7 +61,7 @@ anon_swap_in (struct page *page, void *kva) {
 	}
 
 	bitmap_set(swap_table, swap_slot, false);
-	lock_release(&bitmap_lock);
+	lock_release(&lock_bit);
 	// printf("\n-----------swap_in_end------------\n");
 	return true;
 }
@@ -75,9 +75,9 @@ anon_swap_out (struct page *page) {
 
 	/* 비트맵을 처음부터 순회해 false 값을 가진 비트를 하나 찾는다.
 	   즉, 페이지를 할당받을 수 있는 swap slot을 하나 찾는다. */
-	lock_acquire(&bitmap_lock);
+	lock_acquire(&lock_bit);
 	size_t empty_slot = bitmap_scan_and_flip(swap_table, 0, 1, false);
-	lock_release(&bitmap_lock);
+	lock_release(&lock_bit);
 	// printf("\nbitmap size:%d\n", bitmap_size(&swap_table));
 	// printf("\n-----------swap_out_mid1 empty_slot:%d------------\n",(long)empty_slot);
 
@@ -101,9 +101,9 @@ static void
 anon_destroy (struct page *page) {
 	struct anon_page *anon_page = &page->anon;
 	if (page->frame != NULL){
-		lock_acquire(&frame_lock);
+		lock_acquire(&lock_fr);
 		list_remove(&page->frame->frame_elem);
-		lock_release(&frame_lock);
+		lock_release(&lock_fr);
 		
 		free(page->frame);
 	}
