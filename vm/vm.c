@@ -3,10 +3,10 @@
 #include "threads/malloc.h"
 #include "vm/vm.h"
 #include "vm/inspect.h"
-#include "threads/mmu.h"
 #include "threads/vaddr.h"
 #include <string.h>
 #include "include/userprog/process.h"
+#include "threads/mmu.h"
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
@@ -57,7 +57,7 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void *upage, bool writabl
 	struct supplemental_page_table *spt = &thread_current()->spt;
 	upage = pg_round_down(upage);
 	/* Check wheter the upage is already occupied or not. */
-	if (spt_find_page(spt, upage) == NULL)
+	if (spt_find_page(spt, upage) != NULL){} else
 	{
 		/* TODO: Create the page, fetch the initialier according to the VM type,
 		 * TODO: and then create "uninit" page struct by calling uninit_new. You
@@ -65,44 +65,38 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void *upage, bool writabl
 		struct page *pg = (struct page *)calloc(1, sizeof(struct page));
 		
 		bool (*initializer)(struct page *, enum vm_type, void *);
-		if(VM_TYPE(type) == VM_FILE){
+		if(VM_TYPE(type)==VM_FILE){
 			initializer = file_backed_initializer;
-		} else if(VM_TYPE(type) == VM_ANON){
+		} else if(VM_TYPE(type)==VM_ANON){
 			initializer = anon_initializer;
 		} else{
-			goto err;
+			return false;
 		}
-
 		uninit_new(pg, upage, init, type, aux, initializer);
 
 		/* TODO: Insert the page into the spt. */
 		pg->writable = writable;
 		return spt_insert_page(spt, pg);
 	}
-err:
-	return false;
+	
 }
-
-
 
 /* Find VA from spt and return page. On error, return NULL. */
 /* 지정된 supplemental page table에서 va에 해당하는 struct page를 찾는다. 실패 시 NULL을 반환한다. */
 struct page *
 spt_find_page(struct supplemental_page_table *spt UNUSED, void *va UNUSED)
 {
-	struct page *pg = NULL;
-	struct hash_elem *hash_el;
+	struct page *page = NULL;
+	/* TODO: Fill this function. */
+	struct hash_elem *e;
 
-	pg = (struct page *)calloc(1, sizeof(struct page));
-	pg->va = pg_round_down(va);
-	hash_el = hash_find(&spt->pages, &pg->hash_elem);
-	free(pg);
+	page = (struct page *)calloc(1, sizeof(struct page));
+	page->va = pg_round_down(va);
 
-	if(hash_el == NULL ){
-		return NULL;
-	} else{
-		return hash_entry(hash_el, struct page, hash_elem);
-	}
+	e = hash_find(&spt->pages, &page->hash_elem);
+	free(page);
+
+	return e != NULL ? hash_entry(e, struct page, hash_elem) : NULL;
 }
 
 /* Insert PAGE into spt with validation. */
@@ -110,11 +104,13 @@ bool spt_insert_page(struct supplemental_page_table *spt UNUSED,
 					 struct page *page UNUSED)
 {
 	/* TODO: Fill this function. */
-	if (hash_insert(&spt->pages, &page->hash_elem) != NULL){return false;}
-	else
+
+	// page->va = pg_round_down(page->va);
+	if (hash_insert(&spt->pages, &page->hash_elem) == NULL)
 	{
 		return true;
 	}
+	return false;
 }
 
 void spt_remove_page(struct supplemental_page_table *spt, struct page *page)
@@ -123,41 +119,42 @@ void spt_remove_page(struct supplemental_page_table *spt, struct page *page)
 }
 
 /* Get the struct frame, that will be evicted. */
-/* Function to navigate the frame table and select the victim's page*/
+/* 프레임테이블을 순회하며 희생자 페이지를 고르는 함수 */
 static struct frame *
 vm_get_victim(void)
 {
-	// While determining the victim's page, lock the victim's page because no other process should select it
+	// 희생자 페이지를 결정하는 동안, 다른 프로세스에서도 희생자 페이지를 고르면 안되기 때문에 lock을 걸어줌
 	lock_acquire(&lock_fr);
 	struct frame *victim = NULL;
 	/* TODO: The policy for eviction is up to you. */
-
-	// Clock algorithm. 
-	struct frame *fr;
-	struct list_elem *element;
+	// clock 알고리즘. 
 	
+	struct list_elem *elem;
+	struct frame *frame;
 
-	for (element = list_begin(&list_fr); element != list_end(&list_fr);
-		 element = list_next(element)){
+	for (elem = list_begin(&list_fr); elem != list_end(&list_fr);
+		 elem = list_next(elem)){
 		
-		fr = list_entry(element, struct frame, frame_elem);
+		frame = list_entry(elem, struct frame, frame_elem);
 		
-		bool access = pml4_is_accessed(fr->thread->pml4, fr->page->va);
+		bool access = pml4_is_accessed(frame->thread->pml4, frame->page->va);
 
-		if(access){ 
-			pml4_set_accessed(fr->thread->pml4, fr->page->va, false);} // If access bit is 1, it's converted to 0
-		else { // If access bit is 0, you win
-			victim = fr;
-			list_remove(&fr->frame_elem); // Put it in the victim variable and remove it from the frame table
+		if (!access){ // access bit가 0이라면 당첨
+			victim = frame;
+			list_remove(&frame->frame_elem); // victim 변수에 담은 뒤, 프레임 테이블에서 제거
 			break;
+		}else{
+			pml4_set_accessed(frame->thread->pml4, frame->page->va, false); // 1이라면 0으로 변환해줌
 		}
+		
 	}
-	/* If there is no victim page found, determine the first person in the frame list as the victim page -> because all frames were set to zero*/
+	/* 찾은 희생자 페이지가 없다면 프레임 리스트의 첫번째 녀석을 희생자 페이지로 결정 -> 모든 프레임이 0으로 세팅되었기 때문 */
 	if (victim == NULL){
 		victim = list_entry(list_pop_front(&list_fr), struct frame, frame_elem);
 		
 	}
 	lock_release(&lock_fr);
+	// printf("\nvm_get_victim() end %p\n", victim);
 	return victim;
 }
 
@@ -166,28 +163,16 @@ vm_get_victim(void)
 static struct frame *
 vm_evict_frame(void)
 {
-	struct frame *victim UNUSED = vm_get_victim();
+	// printf("\nvm_evict_frame() entry\n");
+	struct frame *victim UNUSED = vm_get_victim(); // 희생자 프레임 얻기
 	/* TODO: swap out the victim and return the evicted frame. */
-
-	if (!swap_out(victim->page)){ // Swap out the phase of the corresponding
-		return NULL;
+	if (swap_out(victim->page)){ // 해당 프레임의 페이즈를 swap out
+		return victim;
 	}
-	return victim;
+	// printf("\nvm_evict_frame() fail\n");
+	return NULL;
 }
 
-
-static void evict_frame_helper(void *kva ){
-	if (kva == NULL) // kva == NULL when physical memory is full
-	{
-		struct frame* evict_frame = vm_evict_frame(); // Memory is full, so we'll decide on the victim's page
-		if(!evict_frame){}
-		else{
-			kva = palloc_get_page(PAL_USER); // Request reallocation
-			free(evict_frame);
-		}
-		
-	}
-}
 /* palloc() and get frame. If there is no available page, evict the page
  * and return it. This always return valid address. That is, if the user pool
  * memory is full, this function evicts the frame to get the available memory
@@ -204,7 +189,19 @@ vm_get_frame(void)
 
 	void *kva = palloc_get_page(PAL_USER);
 
-	evict_frame_helper(kva);
+	if (kva == NULL) // 물리 메모리가 가득 찼을 경우 kva == NULL
+	{
+		// printf("\nvm_get_frame() handling entry\n");
+		struct frame* evict_frame = vm_evict_frame(); // 메모리가 가득 찼으므로 희생자 페이지를 결정 후
+		if(evict_frame){
+			kva = palloc_get_page(PAL_USER); // 재 할당 요청
+			free(evict_frame);
+			// printf("\nvm_get_frame() handling end \n");
+		}else{
+			// PANIC("vm_evict_frame() = NULL");
+		}
+		
+	}
 
 	frame->thread = thread_current();
 	frame->kva = kva;
@@ -220,13 +217,15 @@ vm_get_frame(void)
 static void
 vm_stack_growth(void *addr UNUSED)
 {
-	vm_alloc_page(VM_MARKER_0 | VM_ANON, addr, true);
+	vm_alloc_page(VM_ANON | VM_MARKER_0, addr, true);
 	vm_claim_page(addr);
 }
 
 /* Handle the fault on write_protected page */
 static bool
-vm_handle_wp(struct page *page UNUSED){}
+vm_handle_wp(struct page *page UNUSED)
+{
+}
 
 /* Return true on success */
 bool vm_try_handle_fault(struct intr_frame *f UNUSED, void *addr UNUSED,
@@ -237,28 +236,24 @@ bool vm_try_handle_fault(struct intr_frame *f UNUSED, void *addr UNUSED,
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
 
-	if (!not_present) {return false;}
-	else
+	if (not_present)
 	{	
 		page = spt_find_page(spt, addr);
 
-		if (page != NULL){ return vm_do_claim_page(page); }
-		else 
+		if (page == NULL)
 		{
-			void *rsp;
-			if((void*)user){
-				rsp = f->rsp;
-			} else{
-				rsp = thread_current()->rsp;
-			}
-			if (addr>=rsp-8 && USER_STACK>addr && addr >= USER_STACK - (1<<20))
+			void* rsp = (void*)user ? f->rsp : thread_current()->rsp;
+
+			if (USER_STACK>addr && addr>=rsp-8 && addr >= USER_STACK - (1<<20))
 			{
 				vm_stack_growth(pg_round_down(addr));
 				return true;
 			}
 			return false;
 		}	
+		return vm_do_claim_page(page);
 	}
+	return false;
 }
 
 /* Free the page.
@@ -273,13 +268,14 @@ void vm_dealloc_page(struct page *page)
 bool vm_claim_page(void *va UNUSED)
 {
 	struct page *page = NULL;
-	struct thread *current = thread_current();
-	page = spt_find_page(&current->spt, va);
-	if (page != NULL)
+	/* TODO: Fill this function */
+	struct thread *cur = thread_current();
+	page = spt_find_page(&cur->spt, va);
+	if (page == NULL)
 	{
-		return vm_do_claim_page(page);
+		return false;
 	}
-	return false;
+	return vm_do_claim_page(page);
 }
 
 /* Claim the PAGE and set up the mmu. */
@@ -295,10 +291,11 @@ vm_do_claim_page(struct page *page)
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
 	struct thread *cur = thread_current();
 
-	if (!pml4_get_page(cur->pml4, page->va)){
-		if(pml4_set_page(cur->pml4, page->va, frame->kva, page->writable)){
-			return swap_in(page, frame->kva);
-		}}
+	if (!pml4_get_page(cur->pml4, page->va) && pml4_set_page(cur->pml4, page->va, frame->kva, page->writable))
+	{
+		return swap_in(page, frame->kva);
+	}
+
 	return false;
 }
 
@@ -321,7 +318,7 @@ bool supplemental_page_table_copy(struct supplemental_page_table *dst UNUSED,
 		enum vm_type type = p->operations->type;
 		void *va = p->va;
 		bool writable = p->writable;
-		struct aux_data *aux_dt = calloc(1, sizeof(struct container));
+		struct container *aux_dt = calloc(1, sizeof(struct container));
 		switch (VM_TYPE(type))
 		{
 		case VM_UNINIT:
@@ -355,6 +352,8 @@ void supplemental_page_table_kill(struct supplemental_page_table *spt UNUSED)
 {
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
 	 * TODO: writeback all the modified contents to the storage. */
+
+	// pml4 is dirty / set dirty  활용?
 	hash_destroy(&spt->pages, page_destructor);
 }
 
@@ -362,8 +361,8 @@ void supplemental_page_table_kill(struct supplemental_page_table *spt UNUSED)
 unsigned
 page_hash(const struct hash_elem *p_, void *aux UNUSED)
 {
-	const struct page *page_ = hash_entry(p_, struct page, hash_elem);
-	return hash_bytes(&page_->va, sizeof page_->va);
+	const struct page *p = hash_entry(p_, struct page, hash_elem);
+	return hash_bytes(&p->va, sizeof p->va);
 }
 
 /* Returns true if page a precedes page b. */

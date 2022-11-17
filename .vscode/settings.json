@@ -5,6 +5,7 @@
         "cstdlib": "c",
         "filesys.h": "c",
         "vaddr.h": "c",
-        "thread": "c"
+        "thread": "c",
+        "inspect.h": "c"
     }
 }
