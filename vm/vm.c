@@ -303,38 +303,39 @@ void supplemental_page_table_init(struct supplemental_page_table *spt UNUSED)
 bool supplemental_page_table_copy(struct supplemental_page_table *dst UNUSED,
 								  struct supplemental_page_table *src UNUSED)
 {
-	struct hash_iterator i;
-	hash_first(&i, &src->pages);
-	while (hash_next(&i))
+	struct hash_iterator iter;
+	hash_first(&iter, &src->pages);
+	while (hash_next(&iter))
 	{
-		struct page *p = hash_entry(hash_cur(&i), struct page, hash_elem);
+		struct page *p = hash_entry(hash_cur(&iter), struct page, hash_elem);
 
-		enum vm_type type = p->operations->type;
+		enum vm_type typ = p->operations->type;
 		void *va = p->va;
 		bool writable = p->writable;
-		struct container *aux_dt = calloc(1, sizeof(struct container));
-		switch (VM_TYPE(type))
+		struct container *cont = calloc(1, sizeof(struct container));
+		switch (VM_TYPE(typ))
 		{
 		case VM_UNINIT:
-			memcpy(aux_dt, p->uninit.aux, sizeof(struct container));
-			if (!vm_alloc_page_with_initializer(p->uninit.type, va, writable, p->uninit.init, aux_dt))
+			memcpy(cont, p->uninit.aux, sizeof(struct container));
+			if (vm_alloc_page_with_initializer(p->uninit.type, va, writable, p->uninit.init, cont)){}
+			else
 			{
-				free(aux_dt);
+				free(cont);
 				return false;
 			}
 			break;
 		case VM_ANON:
 		case VM_FILE:
-			free(aux_dt);
-			if (!(vm_alloc_page(type, va, writable) && vm_claim_page(va)))
+			free(cont);
+			if (!(vm_alloc_page(typ, va, writable) && vm_claim_page(va)))
 			{
 				return false;
 			}
-			struct page *page = spt_find_page(dst, va);
-			memcpy(page->frame->kva, p->frame->kva, PGSIZE);
+			struct page *pgg = spt_find_page(dst, va);
+			memcpy(pgg->frame->kva, p->frame->kva, PGSIZE);
 			break;
 		default:
-			PANIC("SPT COPY PANIC!\n");
+			PANIC("PANIC!\n");
 			break;
 		}
 	}
@@ -346,8 +347,6 @@ void supplemental_page_table_kill(struct supplemental_page_table *spt UNUSED)
 {
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
 	 * TODO: writeback all the modified contents to the storage. */
-
-	// pml4 is dirty / set dirty  활용?
 	hash_destroy(&spt->pages, page_destructor);
 }
 
@@ -359,18 +358,17 @@ page_hash(const struct hash_elem *p_, void *aux UNUSED)
 	return hash_bytes(&p->va, sizeof p->va);
 }
 
-/* Returns true if page a precedes page b. */
 bool page_less(const struct hash_elem *a_,
 			   const struct hash_elem *b_, void *aux UNUSED)
 {
-	const struct page *a = hash_entry(a_, struct page, hash_elem);
-	const struct page *b = hash_entry(b_, struct page, hash_elem);
+	const struct page *page_a = hash_entry(a_, struct page, hash_elem);
+	const struct page *page_b = hash_entry(b_, struct page, hash_elem);
 
-	return a->va < b->va;
+	return  page_b->va > page_a->va;
 }
 
 void page_destructor(struct hash_elem *elem, void *aux)
 {
-	struct page *p = hash_entry(elem, struct page, hash_elem);
-	vm_dealloc_page(p);
+	struct page *page_ = hash_entry(elem, struct page, hash_elem);
+	vm_dealloc_page(page_);
 }
