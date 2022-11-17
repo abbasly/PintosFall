@@ -264,15 +264,14 @@ void vm_dealloc_page(struct page *page)
 /* Claim the page that allocate on VA. */
 bool vm_claim_page(void *va UNUSED)
 {
-	struct page *page = NULL;
+	struct page *pg = NULL;
 	/* TODO: Fill this function */
-	struct thread *cur = thread_current();
-	page = spt_find_page(&cur->spt, va);
-	if (page == NULL)
+	struct thread *current = thread_current();
+	pg = spt_find_page(&current->spt, va);
+	if (pg != NULL)
 	{
-		return false;
-	}
-	return vm_do_claim_page(page);
+		vm_do_claim_page(pg);
+	} else {return false;}
 }
 
 /* Claim the PAGE and set up the mmu. */
@@ -286,14 +285,12 @@ vm_do_claim_page(struct page *page)
 	page->frame = frame;
 
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
-	struct thread *cur = thread_current();
 
-	if (!pml4_get_page(cur->pml4, page->va) && pml4_set_page(cur->pml4, page->va, frame->kva, page->writable))
-	{
-		return swap_in(page, frame->kva);
-	}
-
-	return false;
+	if (!pml4_get_page(thread_current()->pml4, page->va)){
+		if(pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable)){
+			return swap_in(page, frame->kva);
+		}}
+	else {return false;}
 }
 
 /* Initialize new supplemental page table */
