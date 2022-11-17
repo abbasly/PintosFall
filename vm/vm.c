@@ -177,6 +177,7 @@ vm_evict_frame(void)
 	return victim;
 }
 
+
 /* palloc() and get frame. If there is no available page, evict the page
  * and return it. This always return valid address. That is, if the user pool
  * memory is full, this function evicts the frame to get the available memory
@@ -188,27 +189,21 @@ vm_get_frame(void)
 	/* TODO: Fill this function. */
 	frame = (struct frame *)calloc(1, sizeof(struct frame));
 
-	ASSERT(frame != NULL);
-	ASSERT(frame->page == NULL);
+	void *free_page = palloc_get_page(PAL_USER);
 
-	void *kva = palloc_get_page(PAL_USER);
-
-	if (kva == NULL) // 물리 메모리가 가득 찼을 경우 kva == NULL
+	if (free_page != NULL){} 
+	else // kva == NULL when physical memory is full
 	{
-		// printf("\nvm_get_frame() handling entry\n");
-		struct frame* evict_frame = vm_evict_frame(); // 메모리가 가득 찼으므로 희생자 페이지를 결정 후
+		struct frame* evict_frame = vm_evict_frame(); // Memory is full, so we'll decide on the victim's page
 		if(evict_frame){
-			kva = palloc_get_page(PAL_USER); // 재 할당 요청
+			free_page = palloc_get_page(PAL_USER); // Request reallocation
 			free(evict_frame);
-			// printf("\nvm_get_frame() handling end \n");
-		}else{
-			// PANIC("vm_evict_frame() = NULL");
 		}
 		
 	}
 
+	frame->kva = free_page;
 	frame->thread = thread_current();
-	frame->kva = kva;
 
 	lock_acquire(&lock_fr);
 	list_push_back(&list_fr, &frame->frame_elem);
@@ -221,15 +216,13 @@ vm_get_frame(void)
 static void
 vm_stack_growth(void *addr UNUSED)
 {
-	vm_alloc_page(VM_ANON | VM_MARKER_0, addr, true);
+	vm_alloc_page(VM_MARKER_0 | VM_ANON , addr, true);
 	vm_claim_page(addr);
 }
 
 /* Handle the fault on write_protected page */
 static bool
-vm_handle_wp(struct page *page UNUSED)
-{
-}
+vm_handle_wp(struct page *page UNUSED){}
 
 /* Return true on success */
 bool vm_try_handle_fault(struct intr_frame *f UNUSED, void *addr UNUSED,
