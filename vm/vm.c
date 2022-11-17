@@ -131,28 +131,32 @@ vm_get_victim(void)
 	struct frame *victim = NULL;
 	/* TODO: The policy for eviction is up to you. */
 	// clock algo
-	struct frame *fr;
-	struct list_elem *e;
+
+	struct frame *frame;
+	struct list_elem *el;
 	
 
-	for (e = list_begin(&list_fr); e != list_end(&list_fr);
-		 e = list_next(e)){
-		
-		fr = list_entry(e, struct frame, frame_elem);
-		
-		bool access = pml4_is_accessed(fr->thread->pml4, fr->page->va);
+	for (el = list_begin(&list_fr); el != list_end(&list_fr);
+		 el = list_next(el)){
 
-		if (!access){ // If access bit is 0, you win
-			victim = fr;
-			list_remove(&fr->frame_elem); // Put it in the victim variable and remove it from the frame table
+		bool access;
+		
+		frame = list_entry(el, struct frame, frame_elem);
+		
+		access = pml4_is_accessed(frame->thread->pml4, frame->page->va);
+
+		if(access){ // If access bit is  1, it's converted to 0
+			pml4_set_accessed(frame->thread->pml4, frame->page->va, false);
+		} else{ // If access bit is 0, you win
+			victim = frame;
+			list_remove(&frame->frame_elem); // Put it in the victim variable and remove it from the frame table
 			break;
-		}else{
-			pml4_set_accessed(fr->thread->pml4, fr->page->va, false); // If it's 1, it's converted to 0
 		}
 		
 	}
 	/* If there is no victim page found, determine the first person in the frame list as the victim page -> because all frames were set to zero*/
-	if (victim == NULL){
+	if (victim != NULL){}
+	else{
 		victim = list_entry(list_pop_front(&list_fr), struct frame, frame_elem);
 		
 	}
@@ -165,14 +169,12 @@ vm_get_victim(void)
 static struct frame *
 vm_evict_frame(void)
 {
-	// printf("\nvm_evict_frame() entry\n");
-	struct frame *victim UNUSED = vm_get_victim(); // 희생자 프레임 얻기
+	struct frame *victim UNUSED = vm_get_victim(); // Get victim frames
 	/* TODO: swap out the victim and return the evicted frame. */
-	if (swap_out(victim->page)){ // 해당 프레임의 페이즈를 swap out
-		return victim;
+	if (!swap_out(victim->page)){ // Swap out the phase of the corresponding
+		return NULL;
 	}
-	// printf("\nvm_evict_frame() fail\n");
-	return NULL;
+	return victim;
 }
 
 /* palloc() and get frame. If there is no available page, evict the page
