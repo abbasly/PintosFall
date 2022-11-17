@@ -132,7 +132,7 @@ vm_get_victim(void)
 	/* TODO: The policy for eviction is up to you. */
 	// clock algo
 
-	struct frame *frame;
+	struct frame *fr;
 	struct list_elem *el;
 	
 
@@ -141,15 +141,15 @@ vm_get_victim(void)
 
 		bool access;
 		
-		frame = list_entry(el, struct frame, frame_elem);
+		fr = list_entry(el, struct frame, frame_elem);
 		
-		access = pml4_is_accessed(frame->thread->pml4, frame->page->va);
+		access = pml4_is_accessed(fr->thread->pml4, fr->page->va);
 
 		if(access){ // If access bit is  1, it's converted to 0
-			pml4_set_accessed(frame->thread->pml4, frame->page->va, false);
+			pml4_set_accessed(fr->thread->pml4, fr->page->va, false);
 		} else{ // If access bit is 0, you win
-			victim = frame;
-			list_remove(&frame->frame_elem); // Put it in the victim variable and remove it from the frame table
+			victim = fr;
+			list_remove(&fr->frame_elem); // Put it in the victim variable and remove it from the frame table
 			break;
 		}
 		
@@ -229,26 +229,31 @@ bool vm_try_handle_fault(struct intr_frame *f UNUSED, void *addr UNUSED,
 						 bool user UNUSED, bool write UNUSED, bool not_present UNUSED)
 {
 	struct supplemental_page_table *spt UNUSED = &thread_current()->spt;
-	struct page *page = NULL;
+	struct page *pg = NULL;
 	/* TODO: Validate the fault */
 	/* TODO: Your code goes here */
 
 	if (not_present)
 	{	
-		page = spt_find_page(spt, addr);
+		pg = spt_find_page(spt, addr);
 
-		if (page == NULL)
+		if (pg != NULL) {return vm_do_claim_page(pg);}
+		else
 		{
-			void* rsp = (void*)user ? f->rsp : thread_current()->rsp;
+			void *rsp;
 
-			if (USER_STACK>addr && addr>=rsp-8 && addr >= USER_STACK - (1<<20))
+			if((void*)user){
+				rsp = f->rsp;
+			} else{
+				rsp = thread_current()->rsp;
+			}
+			if (addr>=rsp-8 && USER_STACK>addr  &&  USER_STACK - (1<<20) <= addr)
 			{
 				vm_stack_growth(pg_round_down(addr));
 				return true;
 			}
 			return false;
 		}	
-		return vm_do_claim_page(page);
 	}
 	return false;
 }
@@ -299,6 +304,9 @@ void supplemental_page_table_init(struct supplemental_page_table *spt UNUSED)
 	hash_init(&spt->pages, page_hash, page_less, NULL);
 }
 
+bool checkk(enum vm_type typ, void *addr, bool is_writable){
+	return !(vm_alloc_page(typ, addr, is_writable) && vm_claim_page(addr));
+}
 /* Copy supplemental page table from src to dst */
 bool supplemental_page_table_copy(struct supplemental_page_table *dst UNUSED,
 								  struct supplemental_page_table *src UNUSED)
@@ -307,17 +315,17 @@ bool supplemental_page_table_copy(struct supplemental_page_table *dst UNUSED,
 	hash_first(&iter, &src->pages);
 	while (hash_next(&iter))
 	{
-		struct page *p = hash_entry(hash_cur(&iter), struct page, hash_elem);
-
-		enum vm_type typ = p->operations->type;
-		void *va = p->va;
-		bool writable = p->writable;
 		struct container *cont = calloc(1, sizeof(struct container));
+		struct page *p = hash_entry(hash_cur(&iter), struct page, hash_elem);
+		enum vm_type typ = p->operations->type;
+		void *addr = p->va;
+		bool is_writable = p->writable;
+		
 		switch (VM_TYPE(typ))
 		{
 		case VM_UNINIT:
 			memcpy(cont, p->uninit.aux, sizeof(struct container));
-			if (vm_alloc_page_with_initializer(p->uninit.type, va, writable, p->uninit.init, cont)){}
+			if (vm_alloc_page_with_initializer(p->uninit.type, addr, is_writable, p->uninit.init, cont)){}
 			else
 			{
 				free(cont);
@@ -327,13 +335,12 @@ bool supplemental_page_table_copy(struct supplemental_page_table *dst UNUSED,
 		case VM_ANON:
 		case VM_FILE:
 			free(cont);
-			if (!(vm_alloc_page(typ, va, writable) && vm_claim_page(va)))
-			{
-				return false;
-			}
-			struct page *pgg = spt_find_page(dst, va);
+			if (!checkk(typ, addr, is_writable)){
+				struct page *pgg = spt_find_page(dst, addr);
 			memcpy(pgg->frame->kva, p->frame->kva, PGSIZE);
 			break;
+			}
+			else return false;
 		default:
 			PANIC("PANIC!\n");
 			break;
