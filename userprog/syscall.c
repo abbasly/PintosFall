@@ -23,7 +23,6 @@ void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 
 void *mmap (void *addr, size_t length, int writable, int fd, off_t offset);
-void munmap (void *addr);
 static struct file *fd_to_file(int fd);
 void valid_adress(uaddr);
 void halt(void);
@@ -62,13 +61,13 @@ void exit(int status)
 void valid_adress(void *addr)
 {
 
-	#ifndef VM
-	if (addr == NULL || !(is_user_vaddr(addr)) || !pml4_get_page(thread_current()->pml4, addr))
-	{
+	#ifdef VM
+    if (is_kernel_vaddr((addr)) || addr == NULL){
 		exit(-1);
 	}
-	#else
-	if (addr == NULL || !(is_user_vaddr(addr))){
+    #else
+	if (is_kernel_vaddr((addr)) || addr == NULL || !pml4_get_page(thread_current()->pml4, addr))
+	{
 		exit(-1);
 	}
 	#endif
@@ -139,12 +138,14 @@ int filesize(int fd)
 int read(int fd, void *buffer, unsigned size)
 {
     valid_adress(buffer);
-    struct thread *cur = thread_current();
-
+    /* project3 - writable is not true, but should not try to write to buffer. */
 	#ifdef VM
-		/* project3 - writable이 true가 아닌데, buffer에 쓰려고하면 안됨. */
-		struct page* p = spt_find_page(&cur->spt, buffer);
-		if (p && !p->writable) exit(-1);
+        struct thread *cur = thread_current();
+		struct page* page = spt_find_page(&cur->spt, buffer);
+		if (page){
+            if(!page->writable)
+                {exit(-1);}
+                }
 	#endif
     off_t bytes_read;
     uint8_t *read_buffer = buffer;
@@ -289,26 +290,29 @@ syscall_init (void) {
 	lock_init(&file_lock);
 }
 
-void *mmap (void *addr, size_t length, int writable, int fd, off_t offset){
-   
-   if (addr == NULL || !(is_user_vaddr(addr)) || (long)length <= 0 || fd < 2 
-      || addr != pg_round_down(addr) || offset % PGSIZE != 0){ 
-      return NULL;
-   }
-
-   struct file *file = fd_to_file(fd);
-
-   return do_mmap(addr, length, writable, file, offset);
+bool
+check_(void *address, size_t len, int file_d, off_t offset){
+    return is_kernel_vaddr((address)) || address == NULL || (long)len <= 0 || offset % PGSIZE != 0 || file_d <= 1 
+      || address != pg_round_down(address);
 }
 
-void munmap (void *addr){
-	do_munmap(addr);
+void *mmap (void *address, size_t len, int writable, int file_d, off_t offset){
+   
+   if (check_(address, len, file_d, offset)){ 
+      return NULL;
+   } else {}
+
+   struct file *fl = fd_to_file(file_d);
+
+   return do_mmap(address, len, writable, fl, offset);
 }
 
 void syscall_handler(struct intr_frame *f UNUSED)
 {
-    struct thread*t = thread_current();
-	t->rsp = f->rsp;
+    #ifdef VM
+	 thread_current()->rsp = f->rsp;
+    #endif
+
     switch (f->R.rax) // system call number
     {
     case SYS_HALT:
@@ -316,9 +320,6 @@ void syscall_handler(struct intr_frame *f UNUSED)
         break;
     case SYS_MMAP:
         f->R.rax = mmap(f->R.rdi, f->R.rsi, f->R.rdx, f->R.r10, f->R.r8);
-        break;
-    case SYS_MUNMAP:
-        munmap(f->R.rdi);
         break;
     case SYS_EXIT:
         exit(f->R.rdi);
@@ -331,6 +332,9 @@ void syscall_handler(struct intr_frame *f UNUSED)
         break;
     case SYS_WRITE:
         f->R.rax = write(f->R.rdi, f->R.rsi, f->R.rdx);
+        break;
+    case SYS_MUNMAP:
+        do_munmap(f->R.rdi);
         break;
     case SYS_FORK:
         f->R.rax = fork(f->R.rdi, f);

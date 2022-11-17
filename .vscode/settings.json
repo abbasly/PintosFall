@@ -4,6 +4,7 @@
         "vm.h": "c",
         "cstdlib": "c",
         "filesys.h": "c",
-        "vaddr.h": "c"
+        "vaddr.h": "c",
+        "thread": "c"
     }
 }
