@@ -323,11 +323,11 @@ bool supplemental_page_table_copy(struct supplemental_page_table *dst UNUSED,
 		enum vm_type type = p->operations->type;
 		void *va = p->va;
 		bool writable = p->writable;
-		struct aux_data *aux_dt = calloc(1, sizeof(struct aux_data));
+		struct container *aux_dt = calloc(1, sizeof(struct container));
 		switch (VM_TYPE(type))
 		{
 		case VM_UNINIT:
-			memcpy(aux_dt, p->uninit.aux, sizeof(struct aux_data));
+			memcpy(aux_dt, p->uninit.aux, sizeof(struct container));
 			if (!vm_alloc_page_with_initializer(p->uninit.type, va, writable, p->uninit.init, aux_dt))
 			{
 				free(aux_dt);

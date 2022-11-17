@@ -117,18 +117,18 @@ do_mmap (void *addr, size_t length, int writable,
         size_t page_read_bytes = length < PGSIZE ? length : PGSIZE;
         size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-        struct aux_data *aux_dt = calloc(1, sizeof(struct aux_data));
+        struct container *cont = calloc(1, sizeof(struct container));
 
-        aux_dt->cnt = cnt;
-        aux_dt->file = reopen_file;
-        aux_dt->ofs = offset;
-        aux_dt->read_bytes = page_read_bytes;
-        aux_dt->zero_bytes = page_zero_bytes;
+        cont->cnt = cnt;
+        cont->file = reopen_file;
+        cont->ofs = offset;
+        cont->read_bytes = page_read_bytes;
+        cont->zero_bytes = page_zero_bytes;
 
 
         if (!vm_alloc_page_with_initializer(VM_FILE, addr,
-                                            writable, lazy_load_segment, (void *)aux_dt)){
-            free(aux_dt);
+                                            writable, lazy_load_segment, (void *)cont)){
+            free(cont);
             return false;
         }
 

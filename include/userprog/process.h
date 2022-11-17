@@ -11,11 +11,11 @@ void process_exit (void);
 void process_activate (struct thread *next);
 bool lazy_load_segment(struct page *page, void *aux);
 
-struct aux_data{
+struct container{
+    int cnt;
     struct file* file;
     off_t ofs;
-    size_t read_bytes;
     size_t zero_bytes;
-    int cnt;
+    size_t read_bytes;
 };
 #endif /* userprog/process.h */
